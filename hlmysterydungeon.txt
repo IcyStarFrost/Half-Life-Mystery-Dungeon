@@ -1,0 +1,9 @@
+"hlmysterydungeon"
+{
+	"base"		"base"
+	"title"		"Half Life: Mystery Dungeon"
+	"maps"		"^hlmd_"
+	"category"	"pve"
+	"menusystem"	"1"
+
+}
