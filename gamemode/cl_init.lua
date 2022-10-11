@@ -1,4 +1,5 @@
 include( "shared.lua" )
+include( "cl_netmessages.lua" )
 
 local trace = util.TraceLine
 

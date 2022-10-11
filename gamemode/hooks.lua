@@ -9,8 +9,8 @@ hook.Add( "PlayerInitialSpawn", "hlmd_setupplayernextbot", function( ply )
     ply.Nextbot = ents.Create( "hlmd_rebel" )
     ply.Nextbot:SetPos( ply:GetPos() )
     ply.Nextbot:SetAngles( ply:GetAngles() )
-    ply.Nextbot.PlayerControlled = true
     ply.Nextbot:Spawn()
+    ply.Nextbot:SetPlayerControlled( true )
 
     ply.Nextbot.loco:SetDesiredSpeed( 200 )
 
@@ -69,6 +69,14 @@ hook.Add( "StartCommand", "hlmd_command", function( ply, cmd )
 
 end )
 
+hook.Add( "EntityTakeDamage", "hlmd_nodamage", function( ent )
+    if IsValid( ent ) and ent:IsPlayer() then return true end
+end )
+
+hook.Add( "CanPlayerSuicide", "hlmd_nokillbind", function( ply )
+    return false
+end )
+
 
 hook.Add( "PostCleanupMap", "hlmd_reset", function()
 
@@ -82,9 +90,9 @@ hook.Add( "PostCleanupMap", "hlmd_reset", function()
         Entity( 1 ).Nextbot = ents.Create( "hlmd_rebel" )
         Entity( 1 ).Nextbot:SetPos( Entity( 1 ):GetPos() )
         Entity( 1 ).Nextbot:SetAngles( Entity( 1 ):GetAngles() )
-        Entity( 1 ).Nextbot.PlayerControlled = true
         Entity( 1 ).Nextbot:Spawn()
-
+        Entity( 1 ).Nextbot:SetPlayerControlled( true )
+        
         Entity( 1 ).Nextbot.loco:SetDesiredSpeed( 200 )
 
         net.Start( "hlmd_setviewtarget" )
