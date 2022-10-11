@@ -11,14 +11,25 @@ local math_rad = math.rad
 local math_sin = math.sin
 local math_cos = math.cos
 local math_clamp = math.Clamp
+local math_abs = math.abs
 local developermode = GetConVar( "developer" )
+local IsValid = IsValid
+
+local targetsprite = Material( "hlmd/target.png" )
 
 ENT.FootStepTrace = {}
 ENT.NextFootstepSnd = 0
+ENT.IsHLMDNPC = true
+ENT.InputAllowed = true
+ENT.PastEnemies = {}
+ENT.PauseMovement = nil
+ENT.GoalPosition = nil
+ENT.FaceTarget = nil
+ENT.IsAttacking = false
 
 function ENT:SetupDataTables()
 
-    self:NetworkVar( "Int", 0, "Team" )
+    self:NetworkVar( "Int", 0, "HLMDTeam" )
     self:NetworkVar( "Vector", 0, "DisplayColor" )
     self:NetworkVar( "Bool", 0, "PlayerControlled" )
     self:NetworkVar( "Entity", 0, "WeaponEntity" )
@@ -71,7 +82,7 @@ function ENT:Draw()
 
         local col = self:GetDisplayColor():ToColor()
 
-        col.a = math.abs( math_sin( SysTime() * 2 ) * 50 )
+        col.a = math_abs( math_sin( SysTime() * 2 ) * 50 )
 
 
         surface.SetDrawColor( col.r, col.g, col.b, col.a )
@@ -79,9 +90,37 @@ function ENT:Draw()
 
         draw_Circle( 0, 0, self:GetModelRadius() / 2, 32 )
 
+        if self:GetPlayerControlled() and IsValid( self:GetWeaponEntity() ) then 
+
+          local r = 0
+          local g = 255
+
+          local find = HLMD_FindInSphere( self:GetPos(), self:GetWeaponEntity().Range, function( ent ) if ent.IsHLMDNPC and ent != self and ent:GetHLMDTeam() != self:GetHLMDTeam() then return true end end )
+
+          if #find > 0 then
+            r = 255
+            g = 0
+          end
+
+          surface.DrawCircle( 0, 0, self:GetWeaponEntity().Range, r, g, 0, 200 ) 
+
+          surface.DrawCircle( 0, 0, self:GetWeaponEntity().Range - 1, 0, 0, 0, 200 ) 
+          surface.DrawCircle( 0, 0, self:GetWeaponEntity().Range + 1, 0, 0, 0, 200 ) 
+
+        end
+
         render.DepthRange( 0, 1 )
 
     cam.End3D2D()
+
+    if self:GetPlayerControlled() and IsValid( self:GetEnemy() ) then
+      render.SetMaterial( targetsprite )
+      local maxz = self:GetEnemy():OBBMaxs()
+      maxz[ 1 ] = 0
+      maxz[ 2 ] = 0
+      maxz[ 3 ] = maxz[ 3 ] + 100
+      render.DrawSprite( ( self:GetEnemy():GetPos() + maxz ), 32, 32, color_white ) 
+    end 
 
     self:DrawModel()
 
@@ -99,14 +138,6 @@ function ENT:OnKilled( info )
         if IsValid( ragdoll ) then ragdoll:Remove() end
     end )
 end
-
-local weaponanimations = {
-    ["SMG1"] = {
-        idle = ACT_HL2MP_IDLE_SMG1,
-        run = ACT_HL2MP_RUN_SMG1,
-        jump = ACT_HL2MP_JUMP_SMG1
-    }
-}
 
 function ENT:Think()
 
@@ -132,9 +163,9 @@ function ENT:Think()
             end
         end
 
-        local idle = weaponanimations[ self:GetWeapon() ] and weaponanimations[ self:GetWeapon() ].idle or ACT_HL2MP_IDLE
-        local run = weaponanimations[ self:GetWeapon() ] and weaponanimations[ self:GetWeapon() ].run or ACT_HL2MP_RUN
-        local jump = weaponanimations[ self:GetWeapon() ] and weaponanimations[ self:GetWeapon() ].jump or ACT_HL2MP_JUMP_FIST
+        local idle = IsValid( self:GetWeaponEntity() ) and self:GetWeaponEntity().Animations.idle or ACT_HL2MP_IDLE
+        local run = IsValid( self:GetWeaponEntity() ) and self:GetWeaponEntity().Animations.run or ACT_HL2MP_RUN
+        local jump = IsValid( self:GetWeaponEntity() ) and self:GetWeaponEntity().Animations.jump or ACT_HL2MP_JUMP_FIST
 
         if !self.loco:GetVelocity():IsZero() and self.loco:IsOnGround() and self:GetActivity() != run then
             self:StartActivity( run )
@@ -142,6 +173,11 @@ function ENT:Think()
             self:StartActivity( idle )
         elseif !self.loco:IsOnGround() and self:GetActivity() != jump then
             self:StartActivity( jump )
+        end
+
+
+        if IsValid( self.FaceTarget ) then
+          self.loco:FaceTowards( ( isentity( self.FaceTarget ) and self.FaceTarget:GetPos() or self.FaceTarget ) )
         end
 
     end
@@ -245,20 +281,64 @@ function ENT:GetBonePosAngs(index)
   
   end
 
+
+function ENT:ChangeEnemy()
+  if !IsValid( self:GetWeaponEntity() ) then return end
+  local find = HLMD_FindInSphere( self:GetPos(), self:GetWeaponEntity().Range, function( ent ) if ent.IsHLMDNPC and ent != self and ent:GetHLMDTeam() != self:GetHLMDTeam() then return true end end )
+  
+  for k, v in ipairs( find ) do
+    if !self.PastEnemies[ v ] and v != self:GetEnemy() then
+      self:SetEnemy( v )
+      HLMD_DebugText( self, " Has chosen a new target! ", v)
+      self.PastEnemies[ v ] = v
+      return
+    end
+  end
+
+  self.PastEnemies = {}
+  self:SetEnemy( NULL )
+  HLMD_DebugText( self, " Doesn't have anyone near them or their enemies are in the past! Cleaning PastEnemies Table..")
+
+end
+
+function ENT:AttackEnemy()
+  if !IsValid( self:GetWeaponEntity() ) then HLMD_DebugText( self, " Tried to attack a target with no weapon! ", debug.traceback() ) return end
+  if !IsValid( self:GetEnemy() ) then HLMD_DebugText( self, " Tried to attack a non existent enemy! ", debug.traceback() ) return end
+  if self:GetRangeSquaredTo( self:GetEnemy() ) > ( self:GetWeaponEntity().Range * self:GetWeaponEntity().Range ) then HLMD_DebugText( self, " Tried to attack from a range their weapon can't reach!") return end
+
+  self.InputAllowed = false
+  self.FaceTarget = self:GetEnemy()
+  self.IsAttacking = true
+
+  timer.Simple( math.Rand( 0.3, 1 ), function() 
+    self:GetWeaponEntity():FireWeapon( function() self.FaceTarget = nil self.InputAllowed = true self.IsAttacking = false end )
+  end )
+
+end
+
 function ENT:SwitchWeapon( classname )
+  if IsValid( self:GetWeaponEntity() ) and self:GetWeaponEntity():GetClass() == classname then return end
 
-    local attach = self:GetAttachmentPoint( "hand" )
-    local id = self:LookupAttachment( "anim_attachment_RH" )
+  local attach = self:GetAttachmentPoint( "hand" )
+  local id = self:LookupAttachment( "anim_attachment_RH" )
 
-    local weapon = ents.Create( classname )
-    weapon:SetPos( attach.Pos )
-    weapon:SetAngles( attach.Ang )
-    weapon:AddEffects( EF_BONEMERGE )
-    weapon:SetParent( self, id )
-    weapon:SetOwner( self )
-    weapon:Spawn()
+  local weapon = ents.Create( classname )
+  weapon:SetPos( attach.Pos )
+  weapon:SetAngles( attach.Ang )
+  weapon:AddEffects( EF_BONEMERGE )
+  weapon:SetParent( self, id )
+  weapon:SetOwner( self )
+  weapon:Spawn()
 
-    self:SetWeapon( weapon.WeaponName )
-    self:SetWeaponEntity( weapon )
+  self:SetWeapon( weapon.WeaponName )
+  self:SetWeaponEntity( weapon )
+
+  if IsValid( self:GetOwner() ) then
+    local dist = weapon.Range > 500 and weapon.Range or 500
+
+    net.Start( "hlmd_setviewdistance" )
+    net.WriteUInt( dist + 200 , 16 )
+    net.Send( self:GetOwner() )
+  end
 
 end

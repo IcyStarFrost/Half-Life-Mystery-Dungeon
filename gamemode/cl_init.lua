@@ -7,13 +7,15 @@ local overridepos
 local overrideangs
 local overridefov 
 local target
-
+local farview = 500
+local farviewlerp = 500
 local viewtbl = {}
 local tracetbl = {}
 
 function GM:CalcView( ply, origin, angles, fov, znear, zfar )
     if !IsValid( target ) then return end
-    local skyviewpos = target:GetPos() + Vector( 500, 0, 500 )
+    farviewlerp = Lerp( 2 * FrameTime(), farviewlerp, farview )
+    local skyviewpos = target:GetPos() + Vector( farviewlerp, 0, farviewlerp )
 
     tracetbl.start = target:WorldSpaceCenter()
     tracetbl.endpos = skyviewpos
@@ -30,4 +32,5 @@ function GM:CalcView( ply, origin, angles, fov, znear, zfar )
     return viewtbl
 end
 
+net.Receive( "hlmd_setviewdistance", function() farview = net.ReadUInt( 16 ) end )
 net.Receive( "hlmd_setviewtarget", function() target = net.ReadEntity() end )

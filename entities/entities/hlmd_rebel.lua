@@ -9,6 +9,7 @@ function ENT:Initialize()
     self:SetModel( "models/player/group02/male_04.mdl" )
 
     self:SetDisplayColor( Vector( 1, 1, 1 ) )
+    self:SetNickname( "Rebel" )
     self:SetShouldServerRagdoll( true )
 
     if SERVER then

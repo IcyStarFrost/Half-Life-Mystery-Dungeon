@@ -9,6 +9,7 @@ hook.Add( "PlayerInitialSpawn", "hlmd_setupplayernextbot", function( ply )
     ply.Nextbot = ents.Create( "hlmd_rebel" )
     ply.Nextbot:SetPos( ply:GetPos() )
     ply.Nextbot:SetAngles( ply:GetAngles() )
+    ply.Nextbot:SetOwner( ply )
     ply.Nextbot:Spawn()
     ply.Nextbot:SetPlayerControlled( true )
 
@@ -27,8 +28,10 @@ hook.Add("SetupPlayerVisibility", "hlmd_vis", function( ply, view )
 
 end )
 
+
+-- Player nextbot control
 hook.Add( "StartCommand", "hlmd_command", function( ply, cmd )
-    if IsValid( ply.Nextbot ) then
+    if IsValid( ply.Nextbot ) and ply.Nextbot.InputAllowed then
 
         local vec = ply.Nextbot:GetPos()
         local ismoving = false
@@ -52,6 +55,17 @@ hook.Add( "StartCommand", "hlmd_command", function( ply, cmd )
             vec.y = vec.y - 100
             ismoving = true
         end
+
+        if cmd:KeyDown(IN_USE) then
+            ply.Nextbot:SwitchWeapon( "hlmd_weapon_smg1" )
+        end
+
+        if cmd:KeyDown( IN_JUMP ) and ( !ply.Nextbot.ChangeEnemyCooldown or CurTime() > ply.Nextbot.ChangeEnemyCooldown ) then
+            ply.Nextbot:ChangeEnemy()
+            ply.Nextbot.ChangeEnemyCooldown = CurTime() + 0.5
+        end
+
+        if cmd:KeyDown( IN_ATTACK ) and !ply.Nextbot.IsAttacking then ply.Nextbot:AttackEnemy() end
 
 
 
@@ -90,6 +104,7 @@ hook.Add( "PostCleanupMap", "hlmd_reset", function()
         Entity( 1 ).Nextbot = ents.Create( "hlmd_rebel" )
         Entity( 1 ).Nextbot:SetPos( Entity( 1 ):GetPos() )
         Entity( 1 ).Nextbot:SetAngles( Entity( 1 ):GetAngles() )
+        Entity( 1 ).Nextbot:SetOwner( Entity( 1 ) )
         Entity( 1 ).Nextbot:Spawn()
         Entity( 1 ).Nextbot:SetPlayerControlled( true )
         
@@ -97,6 +112,10 @@ hook.Add( "PostCleanupMap", "hlmd_reset", function()
 
         net.Start( "hlmd_setviewtarget" )
         net.WriteEntity( Entity( 1 ).Nextbot )
+        net.Send( Entity( 1 ) )
+
+        net.Start( "hlmd_setviewdistance" )
+        net.WriteUInt( 500 , 16 )
         net.Send( Entity( 1 ) )
 
     end )
