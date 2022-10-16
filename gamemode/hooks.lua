@@ -1,5 +1,7 @@
 
+-- Where most of the hooks will be handled
 
+print("HLMD: Hooks Initialized")
 
 hook.Add( "PlayerInitialSpawn", "hlmd_setupplayernextbot", function( ply )
 
@@ -12,26 +14,30 @@ hook.Add( "PlayerInitialSpawn", "hlmd_setupplayernextbot", function( ply )
     ply.Nextbot:SetOwner( ply )
     ply.Nextbot:Spawn()
     ply.Nextbot:SetPlayerControlled( true )
-
-    ply.Nextbot.loco:SetDesiredSpeed( 200 )
+    ply.Nextbot:SetDisplayColor( Vector( 1, 1, 1 ) )
+    ply:SetNWEntity( "hlmd_nextbot", ply.Nextbot )
 
     net.Start( "hlmd_setviewtarget" )
+    net.WriteEntity( ply.Nextbot )
+    net.Send( ply )
+
+    net.Start( "hlmd_addteammember" )
     net.WriteEntity( ply.Nextbot )
     net.Send( ply )
 
 end )
 
 hook.Add("SetupPlayerVisibility", "hlmd_vis", function( ply, view )
-    if !IsValid( ply.Nextbot ) then return end
+    if !IsValid( Entity( 1 ).Nextbot ) then return end
 
-    AddOriginToPVS( ply.Nextbot:GetPos() )
+    AddOriginToPVS( Entity( 1 ).Nextbot:GetPos() )
 
 end )
 
 
 -- Player nextbot control
 hook.Add( "StartCommand", "hlmd_command", function( ply, cmd )
-    if IsValid( ply.Nextbot ) and ply.Nextbot.InputAllowed then
+    if IsValid( ply.Nextbot ) and HLMD_AllowInput and ply.Nextbot:GetAlive() and !HLMD_ENEMYTURN and !HLMD_AttackActive then
 
         local vec = ply.Nextbot:GetPos()
         local ismoving = false
@@ -56,8 +62,9 @@ hook.Add( "StartCommand", "hlmd_command", function( ply, cmd )
             ismoving = true
         end
 
-        if cmd:KeyDown(IN_USE) then
-            ply.Nextbot:SwitchWeapon( "hlmd_weapon_smg1" )
+        if cmd:KeyDown(IN_USE) and ( !ply.Nextbot.WeaponswitchCooldown or CurTime() > ply.Nextbot.WeaponswitchCooldown )  then
+            ply.Nextbot:ScrollWeapon()
+            ply.Nextbot.WeaponswitchCooldown = CurTime() + 1
         end
 
         if cmd:KeyDown( IN_JUMP ) and ( !ply.Nextbot.ChangeEnemyCooldown or CurTime() > ply.Nextbot.ChangeEnemyCooldown ) then
@@ -107,8 +114,8 @@ hook.Add( "PostCleanupMap", "hlmd_reset", function()
         Entity( 1 ).Nextbot:SetOwner( Entity( 1 ) )
         Entity( 1 ).Nextbot:Spawn()
         Entity( 1 ).Nextbot:SetPlayerControlled( true )
-        
-        Entity( 1 ).Nextbot.loco:SetDesiredSpeed( 200 )
+        Entity( 1 ).Nextbot:SetDisplayColor( Vector( 1, 1, 1 ) )
+        Entity( 1 ):SetNWEntity( "hlmd_nextbot", Entity( 1 ).Nextbot )
 
         net.Start( "hlmd_setviewtarget" )
         net.WriteEntity( Entity( 1 ).Nextbot )
@@ -116,6 +123,10 @@ hook.Add( "PostCleanupMap", "hlmd_reset", function()
 
         net.Start( "hlmd_setviewdistance" )
         net.WriteUInt( 500 , 16 )
+        net.Send( Entity( 1 ) )
+
+        net.Start( "hlmd_addteammember" )
+        net.WriteEntity( Entity( 1 ).Nextbot )
         net.Send( Entity( 1 ) )
 
     end )

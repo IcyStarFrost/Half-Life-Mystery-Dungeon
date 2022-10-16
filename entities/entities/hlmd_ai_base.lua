@@ -6,37 +6,62 @@ ENT.Base = "base_nextbot"
 -- Optimize by localizing these so we don't have to go through a global table AND go through the table holding these functions
 local trace = util.TraceLine
 local table_insert = table.insert
+local table_Count = table.Count
 local tracetbl = {}
 local math_rad = math.rad
 local math_sin = math.sin
 local math_cos = math.cos
 local math_clamp = math.Clamp
 local math_abs = math.abs
+local random = math.random
 local developermode = GetConVar( "developer" )
 local IsValid = IsValid
 
 local targetsprite = Material( "hlmd/target.png" )
+
+local ValidWeapons = {
+
+	[ "Human" ] = {
+		"hlmd_weapon_smg1",
+	},
+
+	[ "Combine" ] = {
+		"hlmd_weapon_smg1",
+	},
+
+}
 
 ENT.FootStepTrace = {}
 ENT.NextFootstepSnd = 0
 ENT.IsHLMDNPC = true
 ENT.InputAllowed = true
 ENT.PastEnemies = {}
+ENT.PastWeapons = {}
+ENT.Ammo = {}
+ENT.HLMDType = ""
 ENT.PauseMovement = nil
 ENT.GoalPosition = nil
 ENT.FaceTarget = nil
 ENT.IsAttacking = false
+ENT.AddedLevelhealth = 0
+ENT.CanPassiveHeal = true
+ENT.AllowAI = true
+
+ENT.PreventAction = false
+
 
 function ENT:SetupDataTables()
 
     self:NetworkVar( "Int", 0, "HLMDTeam" )
     self:NetworkVar( "Vector", 0, "DisplayColor" )
     self:NetworkVar( "Bool", 0, "PlayerControlled" )
+    self:NetworkVar( "Bool", 1, "Alive")
     self:NetworkVar( "Entity", 0, "WeaponEntity" )
     self:NetworkVar( "Entity", 1, "Enemy" )
     self:NetworkVar( "String", 0, "Nickname" )
     self:NetworkVar( "String", 1, "State" )
     self:NetworkVar( "String", 2, "Weapon" )
+    self:NetworkVar( "String", 3, "Personality" )
 
     -- Stats
     self:NetworkVar( "Int", 1, "Attack" )
@@ -44,12 +69,73 @@ function ENT:SetupDataTables()
     self:NetworkVar( "Int", 3, "Speed" )
     self:NetworkVar( "Int", 4, "Level" )
     self:NetworkVar( "Int", 5, "Evade" )
-    
-    
+    self:NetworkVar( "Int", 6, "XP" )
+
+    self:SetAlive( true )
+    self:SetState( "wander" )
+
+end
+
+function ENT:SetUpHLMDStats( level )
+
+  self:SetLevel( level )
+
+  self.BaseAttack = self.BaseAttack + 2 * ( level )
+  self.BaseDefense = self.BaseDefense + 2 * ( level )
+  self.BaseSpeed = self.BaseSpeed + 2 * ( level )
+
+  self:SetAttack( self.BaseAttack )
+  self:SetDefense( self.BaseDefense )
+  self:SetSpeed( self.BaseSpeed )
+  self:SetEvade( self.BaseEvade )
+
+  self:SetXP( 100 * ( 2 * level) )
+
+  if SERVER then
+    self:SetMaxHealth( self.BaseHealth + self.AddedLevelhealth + 2 * ( level ) )
+  end
+
+end
+
+function ENT:RandomizeStats( level )
+
+  self:SetLevel( level )
+
+  self.BaseAttack = ( self.BaseAttack + 2 * ( level ) ) + random( -10, 10 )
+  self.BaseDefense = ( self.BaseDefense + 2 * ( level ) ) + random( -10, 10 )
+  self.BaseSpeed = ( self.BaseSpeed + 2 * ( level ) ) + random( -10, 10 )
+
+  self.AddedLevelhealth = ( self:GetMaxHealth() + 2 * ( level ) ) + random( -10, 10 )
+
+  self:SetXP( 100 * ( 2 * level) + random( -100, 0 ) )
+
+  if SERVER then
+    self:SetMaxHealth( self.AddedLevelhealth )
+  end
+
+  local limit = 2
+  local i = 0
+
+  for k, v in RandomPairs( ValidWeapons[ self.HLMDType ] ) do
+	if i == limit then break end
+
+	self.Weapons[ #self.Weapons + 1 ] = v
+
+	i = i + 1
+  end
+
+  self:SetAttack( self.BaseAttack )
+  self:SetDefense( self.BaseDefense )
+  self:SetSpeed( self.BaseSpeed )
+  self:SetEvade( self.BaseEvade )
+
 end
 
 -- For override
 function ENT:AddonThink()
+end
+
+function ENT:AddonThread()
 end
 
 
@@ -70,6 +156,7 @@ local function draw_Circle( x, y, radius, seg )
 end
 
 function ENT:Draw()
+  if !self:GetAlive() then return end
 
     tracetbl.start = self:WorldSpaceCenter()
     tracetbl.endpos = self:WorldSpaceCenter() - Vector( 0, 0, 10000 )
@@ -95,7 +182,7 @@ function ENT:Draw()
           local r = 0
           local g = 255
 
-          local find = HLMD_FindInSphere( self:GetPos(), self:GetWeaponEntity().Range, function( ent ) if ent.IsHLMDNPC and ent != self and ent:GetHLMDTeam() != self:GetHLMDTeam() then return true end end )
+          local find = HLMD_FindInSphere( self:GetPos(), self:GetWeaponEntity().Range, function( ent ) if ent.IsHLMDNPC and ent:GetAlive() and self:HasLOS( ent ) and ent != self and ent:GetHLMDTeam() != self:GetHLMDTeam() then return true end end )
 
           if #find > 0 then
             r = 255
@@ -127,25 +214,116 @@ function ENT:Draw()
 end
 
 function ENT:OnKilled( info )
-    local ragdoll = self:BecomeRagdoll( info )
+    if !self:GetAlive() then return end
 
-    net.Start( "hlmd_setmodelcolor" )
-    net.WriteEntity( ragdoll )
-    net.WriteVector( self:GetDisplayColor() )
-    net.Broadcast()
+    self:SetAlive( false )
+	self:DrawShadow( false )
 
-    timer.Simple( 15, function()
-        if IsValid( ragdoll ) then ragdoll:Remove() end
-    end )
+	self:SetCollisionGroup( COLLISION_GROUP_IN_VEHICLE )
+
+    info:GetAttacker():OnEnemyKilled()
+
+    HLMD_OnHLMDNPCKilled( self, info:GetAttacker(), info:GetInflictor() )
+
+	if IsValid( self:GetWeaponEntity() ) then self:GetWeaponEntity():SetNoDraw( true ) self:GetWeaponEntity():DrawShadow( false ) end
+
+	net.Start( "hlmd_ragdollhlmdnpc" )
+	net.WriteEntity( self )
+	net.WriteVector( self:GetDisplayColor() )
+	net.WriteVector( info:GetDamageForce() )
+	net.Broadcast()
+
+end
+
+function ENT:OnAttacked( attacker )
+
+	if !IsValid( self:GetEnemy() ) or self:GetEnemy() != attacker then
+		self:StopMovement()
+		self:SetEnemy( attacker )
+		self:SetState( "attackenemy" )
+	end
+
+end
+
+function ENT:OnRevive()
+end
+
+function ENT:Revive()
+
+	self:SetHealth( self:GetMaxHealth() )
+	self:SetCollisionGroup( COLLISION_GROUP_NONE )
+	self:DrawShadow( true )
+
+	if IsValid( self:GetWeaponEntity() ) then self:GetWeaponEntity():SetNoDraw( false ) self:GetWeaponEntity():DrawShadow( true ) end
+
+	net.Start( "hlmd_removedeathragdoll" )
+	net.WriteEntity( self )
+	net.Broadcast()
+
+end
+
+ENT.ThinkFunctions = {}
+
+function ENT:NewThink( func )
+	table_insert( self.ThinkFunctions, func )
 end
 
 function ENT:Think()
+
+
+	for k, v in ipairs( self.ThinkFunctions ) do
+		
+		local returnvalue = v()
+
+		if returnvalue == "end" then self.ThinkFunctions[ k ] = nil end
+
+	end
+
+    -- It is important that we have this up here
+    if SERVER then
+      if !self.NextHealthNetwork or CurTime() > self.NextHealthNetwork then
+        self:SetNWInt( "hlmd_health", math_clamp( self:Health(), 0, self:GetMaxHealth() ) )
+        self:SetNWInt( "hlmd_maxhealth", self:GetMaxHealth() )
+        self.NextHealthNetwork  = CurTime() + 0.1
+      end
+    end
+
+    if !self:GetAlive() then return end
 
     self:AddonThink()
 
     if SERVER then
 
-        local speed = self.loco:GetVelocity():Length()
+		if self.PreventAction and HLMD_PLAYERMOVING then
+			HLMD_ResetPreventActions()
+		end
+
+		if !self:GetPlayerControlled() and !IsValid( self:GetWeaponEntity() ) then self:ScrollWeapon() end
+
+		local dist = self:InPlayerTeam() and 150 or 1000
+		if !self:GetPlayerControlled() then
+
+			local nearby  = HLMD_FindInSphere( self:GetPos(), dist, function( ent ) if ent.IsHLMDNPC and ent:GetAlive() and ent != self and ent:GetHLMDTeam() != self:GetHLMDTeam() then return true end end )
+
+			local closest = self:GetClosestEntity( nearby )
+
+			if IsValid( closest ) and self:GetEnemy() != closest then
+				self:StopMovement()
+				self:SetEnemy( closest )
+				self:SetState( "attackenemy" )
+			end
+		end
+
+		local speed = self.loco:GetVelocity():Length()
+
+		if self.CanPassiveHeal and self:Health() < self:GetMaxHealth() and speed > 0 and ( !self.NextPassiveHeal or CurTime() > self.NextPassiveHeal ) and self:GetHLMDTeam() == HLMD_PLAYERTEAM then
+			
+			self:SetHealth( self:Health() + 1 )
+
+			self.NextPassiveHeal = CurTime() + 0.5
+		end
+
+        
         if CurTime() > self.NextFootstepSnd and speed > 0 and self.loco:IsOnGround() then
 
             self.FootStepTrace.start = self:WorldSpaceCenter()
@@ -184,21 +362,175 @@ function ENT:Think()
 
 end
 
+function ENT:GetClosestEntity( tbl )
 
-function ENT:ControlMovement( update )
+	local entities = HLMD_FindInSphere( self:GetPos(), 1000, function( ent ) if ent.IsHLMDNPC and ent:GetAlive() and ent != self and ent:GetHLMDTeam() != self:GetHLMDTeam() then return true end end )
+
+	local closest 
+	local dist
+	for k, v in ipairs( entities ) do
+		if !closest and !dist then closest = v dist = self:GetRangeSquaredTo( v ) continue end
+
+		local newdist = self:GetRangeSquaredTo( v )
+		if newdist < dist then
+			closest = v
+			dist = newdist
+		end
+	end
+
+	return closest
+end
+
+function ENT:SayInTextBox( text )
+	net.Start( "hlmd_addtextbar" )
+		net.WriteString( self:GetNickname() )
+		net.WriteString( self:GetModel() )
+		net.WriteString( text )
+		net.WriteVector( self:GetDisplayColor() )
+	net.Broadcast()
+end
+
+function ENT:SayInBubble( text )
+	net.Start( "hlmd_addtextbubble" )
+		net.WriteEntity( self )
+		net.WriteString( text )
+	net.Broadcast()
+end
+
+function ENT:Wander()
+
+	local navareas = {}
+
+	for k, area in ipairs( navmesh.GetAllNavAreas() ) do
+		if IsValid( area ) and area:GetSizeX() > 50 and area:GetSizeY() > 50 and !area:IsUnderwater() then
+			navareas[ #navareas + 1 ] = area
+		end
+	end
+
+	local targetspot = navareas[ random( #navareas ) ]:GetRandomPoint()
+
+	if !targetspot then HLMD_DebugText( "ENT:Wander() had experienced a NIL targetspot! This should never happen! ..But it did" ) return end 
+
+	HLMD_DebugText( self, " Moving to position ", targetspot )
+
+	self.GoalPosition = targetspot
+	self:ControlMovement()
+
+end
+
+function ENT:FollowPlayer()
+	if self:GetRangeSquaredTo( Entity( 1 ).Nextbot ) < ( 100 * 100 ) then return end
+
+	self.GoalPosition = Entity( 1 ).Nextbot
+	self:ControlMovement( true, 100 )
+
+end
+
+function ENT:StopMovement()
+	self.StopMoving = self.IsMoving
+end
+
+function ENT:InPlayerTeam()
+	return self:GetHLMDTeam() == HLMD_PLAYERTEAM
+end
+
+function ENT:GetWeaponRange()
+	return self:GetWeaponEntity().Range
+end
+
+function ENT:AttackState()
+	if !IsValid( self:GetEnemy() ) or !self:GetEnemy():GetAlive() then self:SetState( "wander" ) return end
+
+	if self:GetRangeSquaredTo( self:GetEnemy() ) > ( self:GetWeaponRange() * self:GetWeaponRange() ) or !self:HasLOS( self:GetEnemy() ) then
+
+		self.GoalPosition = self:GetEnemy()
+		self:ControlMovement( true, self:HasLOS( self:GetEnemy() ) and self:GetWeaponRange() - 50 or 30 )
+
+	end
+
+	if self:GetRangeSquaredTo( self:GetEnemy() ) < ( self:GetWeaponRange() * self:GetWeaponRange() ) then
+		self:AttackEnemy()
+	end
+
+end
+
+local statefunctions = {
+	[ "wander" ] = ENT.Wander,
+	[ "followplayer" ] = ENT.FollowPlayer,
+	[ "attackenemy" ] = ENT.AttackState
+}
+
+function ENT:AIFunc()
+	if self:GetPlayerControlled() or !self:GetAlive() then return end
+	if HLMD_AttackActive then return end
+	if self:GetHLMDTeam() == HLMD_PLAYERTEAM and HLMD_ENEMYTURN then return end
+	if self:GetHLMDTeam() == HLMD_PLAYERTEAM and ( !HLMD_PLAYERMOVING and !HLMD_PLAYERTEAMTURN ) then return end
+	if self:GetHLMDTeam() != HLMD_PLAYERTEAM and HLMD_PLAYERTEAMTURN then return end
+	if self:GetHLMDTeam() != HLMD_PLAYERTEAM and ( !HLMD_PLAYERMOVING and !HLMD_ENEMYTURN ) then return end
+	if self.PreventAction then return end
+  
+  
+
+	if self.AllowAI then
+
+		if self:InPlayerTeam() then
+			if !IsValid( self:GetEnemy() ) or !self:GetEnemy():GetAlive() then self:SetState( "followplayer" ) end
+			
+			statefunctions[ self:GetState() ]( self )
+		else
+			statefunctions[ self:GetState() ]( self )
+		end
+
+	end
+
+end
+
+function ENT:RunBehaviour()
+
+
+
+	while true do
+
+		self:AIFunc()
+
+		self:AddonThread()
+
+		coroutine.wait( 0.1 )
+	end
+
+end
+
+-- It took me a while to figure out how to get a turn based system down. It might not be perfect but that's alright if there's a better way I'm sure someone would tell me
+function ENT:UpdateOnPath( path )
+  if HLMD_AttackActive then return end
+  if self:GetHLMDTeam() == HLMD_PLAYERTEAM and HLMD_ENEMYTURN then return end
+  if self:GetHLMDTeam() == HLMD_PLAYERTEAM and ( !HLMD_PLAYERMOVING and !HLMD_PLAYERTEAMTURN ) then return end
+  if self:GetHLMDTeam() != HLMD_PLAYERTEAM and HLMD_PLAYERTEAMTURN then return end
+  if self:GetHLMDTeam() != HLMD_PLAYERTEAM and ( !HLMD_ENEMYTURN and !HLMD_PLAYERMOVING ) then return end
+  if self.PreventAction then return end
+
+	path:Update( self )
+end
+
+function ENT:ControlMovement( update, stopdist )
+	if stopdist then stopdist = stopdist + self:GetModelRadius()/2 end
+	if stopdist and self:GetRangeSquaredTo( self.GoalPosition ) < ( stopdist * stopdist ) then return end 
 	local path = Path( "Follow" )
 
 	path:SetMinLookAheadDistance( 100 )
 	path:SetGoalTolerance( 10 )
-	path:Compute( self, self.GoalPosition )
+	path:Compute( self, ( isentity( self.GoalPosition ) and self.GoalPosition:GetPos() or self.GoalPosition) )
 
-	if ( !path:IsValid() ) then return "failed" end
+	if ( !path:IsValid() ) then HLMD_DebugText( self, " Path was invalid " ) return "failed" end
 
-	while ( path:IsValid() ) do
+	self.IsMoving = true
 
-        if self.PauseMovement then coroutine.yield() end
 
-		path:Update( self )
+	while ( path:IsValid() and self:GetAlive() and !self:GetPlayerControlled()  ) do
+		if self.StopMoving then self.StopMoving = false break end
+		if stopdist and self:GetRangeSquaredTo( self.GoalPosition ) < ( stopdist * stopdist ) then break end
+
+		self:UpdateOnPath( path )
 
 		if developermode:GetBool() then
 			path:Draw()
@@ -209,18 +541,21 @@ function ENT:ControlMovement( update )
             HLMD_DebugText( self, " Got stuck at position ", self:GetPos() )
 
 			self:HandleStuck()
+			self.IsMoving = false
 
 			return "stuck"
 
 		end
 
 		if update then
-			if path:GetAge() > 0.1 then path:Compute( self, self.GoalPosition ) end
+			if path:GetAge() > 0.1 then path:Compute( self, ( isentity( self.GoalPosition ) and self.GoalPosition:GetPos() or self.GoalPosition) ) end
 		end
 
 		coroutine.yield()
 
 	end
+
+	self.IsMoving = false
 
     self.GoalPosition = nil
 
@@ -284,7 +619,7 @@ function ENT:GetBonePosAngs(index)
 
 function ENT:ChangeEnemy()
   if !IsValid( self:GetWeaponEntity() ) then return end
-  local find = HLMD_FindInSphere( self:GetPos(), self:GetWeaponEntity().Range, function( ent ) if ent.IsHLMDNPC and ent != self and ent:GetHLMDTeam() != self:GetHLMDTeam() then return true end end )
+  local find = HLMD_FindInSphere( self:GetPos(), self:GetWeaponEntity().Range, function( ent ) if ent.IsHLMDNPC and ent:GetAlive() and self:HasLOS( ent ) and ent != self and ent:GetHLMDTeam() != self:GetHLMDTeam() then return true end end )
   
   for k, v in ipairs( find ) do
     if !self.PastEnemies[ v ] and v != self:GetEnemy() then
@@ -301,44 +636,114 @@ function ENT:ChangeEnemy()
 
 end
 
+function ENT:OnAction()
+	self.PreventAction = true
+end
+
+function ENT:OnEnemyKilled()
+	self:SetEnemy( NULL )
+	self.PastEnemies = {}
+end
+
+local lostbl = {}
+
+function ENT:HasLOS( ent )
+	lostbl.start = self:WorldSpaceCenter()
+	lostbl.endpos = ent:WorldSpaceCenter()
+	lostbl.filter = self
+
+	local result = trace( lostbl )
+
+	return result.Entity == ent
+end
+
 function ENT:AttackEnemy()
-  if !IsValid( self:GetWeaponEntity() ) then HLMD_DebugText( self, " Tried to attack a target with no weapon! ", debug.traceback() ) return end
-  if !IsValid( self:GetEnemy() ) then HLMD_DebugText( self, " Tried to attack a non existent enemy! ", debug.traceback() ) return end
-  if self:GetRangeSquaredTo( self:GetEnemy() ) > ( self:GetWeaponEntity().Range * self:GetWeaponEntity().Range ) then HLMD_DebugText( self, " Tried to attack from a range their weapon can't reach!") return end
+	if !IsValid( self:GetWeaponEntity() ) then HLMD_DebugText( self, " Tried to attack a target with no weapon! ", debug.traceback() ) return end
+	if !IsValid( self:GetEnemy() ) then HLMD_DebugText( self, " Tried to attack a non existent enemy! ", debug.traceback() ) return end
+	if self:GetRangeSquaredTo( self:GetEnemy() ) > ( self:GetWeaponEntity().Range * self:GetWeaponEntity().Range ) then HLMD_DebugText( self, " Tried to attack from a range their weapon can't reach!") return end
+	if !self:HasLOS( self:GetEnemy() ) then HLMD_DebugText( self, " Tried to attack a target that is out of sight!" ) return end
+	if self.IsAttacking or HLMD_AttackActive then return end
+	if self.PreventAction then return end
 
-  self.InputAllowed = false
-  self.FaceTarget = self:GetEnemy()
-  self.IsAttacking = true
+	-- Parts of this code is how I got the turn based stuff down
 
-  timer.Simple( math.Rand( 0.3, 1 ), function() 
-    self:GetWeaponEntity():FireWeapon( function() self.FaceTarget = nil self.InputAllowed = true self.IsAttacking = false end )
-  end )
+	self.FaceTarget = self:GetEnemy()
+	self.IsAttacking = true
+ 	HLMD_AttackActive = true
+
+	if !self:GetPlayerControlled() then
+		self:OnAction()
+	else
+		HLMD_ResetPreventActions()
+	end
+	
+	local enemy = self:GetEnemy()
+
+	timer.Simple( math.Rand( 0.3, 1 ), function() 
+
+		self:GetWeaponEntity():FireWeapon( function()
+		
+			self.FaceTarget = nil 
+			self.IsAttacking = false 
+			HLMD_AttackActive = false
+
+			if enemy:GetAlive() then
+				enemy:OnAttacked( self )
+			end
+			
+			if self:InPlayerTeam() then
+				HLMD_EnemyTurn( 0.8 )
+			else
+				HLMD_PlayerTeamTurn( 0.8 )
+			end
+		
+    	end )
+	end )
+
+end
+
+function ENT:ScrollWeapon()
+
+	if table_Count( self.PastWeapons ) == #self.Weapons then self.PastWeapons = {} end
+
+	for k, v in RandomPairs( self.Weapons ) do
+		if !self.PastWeapons[ v ] and ( IsValid( self:GetWeaponEntity() ) and self:GetWeaponEntity():GetClass() != v or !IsValid( self:GetWeaponEntity() ) ) then
+			
+			self:SwitchWeapon( v )
+			self.PastWeapons[ v ] = v
+		end
+	end
 
 end
 
 function ENT:SwitchWeapon( classname )
-  if IsValid( self:GetWeaponEntity() ) and self:GetWeaponEntity():GetClass() == classname then return end
+	if IsValid( self:GetWeaponEntity() ) and self:GetWeaponEntity():GetClass() == classname then return elseif IsValid( self:GetWeaponEntity() ) and classname != self:GetWeaponEntity():GetClass() then self.Ammo[ self:GetWeaponEntity():GetClass() ] = self:GetWeaponEntity().Clip self:GetWeaponEntity():Remove() end
+	
+	local attach = self:GetAttachmentPoint( "hand" )
+	local id = self:LookupAttachment( "anim_attachment_RH" )
 
-  local attach = self:GetAttachmentPoint( "hand" )
-  local id = self:LookupAttachment( "anim_attachment_RH" )
 
-  local weapon = ents.Create( classname )
-  weapon:SetPos( attach.Pos )
-  weapon:SetAngles( attach.Ang )
-  weapon:AddEffects( EF_BONEMERGE )
-  weapon:SetParent( self, id )
-  weapon:SetOwner( self )
-  weapon:Spawn()
+	local weapon = ents.Create( classname )
+	weapon:SetPos( attach.Pos )
+	weapon:SetAngles( attach.Ang )
+	weapon:AddEffects( EF_BONEMERGE )
+	weapon:SetParent( self, id )
+	weapon:SetOwner( self )
+	weapon:Spawn()
 
-  self:SetWeapon( weapon.WeaponName )
-  self:SetWeaponEntity( weapon )
+	self:SetWeapon( weapon.WeaponName )
+	self:SetWeaponEntity( weapon )
 
-  if IsValid( self:GetOwner() ) then
-    local dist = weapon.Range > 500 and weapon.Range or 500
+	timer.Simple( 0, function()
+		weapon.Clip = self.Ammo[ classname ] or weapon.Clip
+	end )
 
-    net.Start( "hlmd_setviewdistance" )
-    net.WriteUInt( dist + 200 , 16 )
-    net.Send( self:GetOwner() )
-  end
+	if IsValid( self:GetOwner() ) then
+		local dist = weapon.Range > 500 and weapon.Range or 500
+
+		net.Start( "hlmd_setviewdistance" )
+		net.WriteUInt( dist + 200 , 16 )
+		net.Send( self:GetOwner() )
+	end
 
 end

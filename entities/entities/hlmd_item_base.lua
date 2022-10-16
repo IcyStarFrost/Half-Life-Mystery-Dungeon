@@ -2,13 +2,17 @@ AddCSLuaFile()
 
 ENT.Base = "base_anim"
 ENT.PickupRange = 100
-
+ENT.PickedUp = false
 
 local trace = util.TraceLine
 local tracetbl = {}
 local math_sin = math.sin
 local math_abs = math.abs
 local HLMD_FindInSphere = HLMD_FindInSphere
+local table_insert = table.insert
+local math_rad = math.rad
+local math_sin = math.sin
+local math_cos = math.cos
 
 function ENT:OnPickUp( by )
 end
@@ -49,25 +53,37 @@ function ENT:Draw()
     local result = trace( tracetbl )
 
     cam.Start3D2D( result.HitPos, Angle(), 1 )
-        surface.SetDrawColor( 0, 255, 0, math_abs( math_sin( SysTime() * 2 ) * 50 ) )
-        draw.NoTexture()
-        draw_Circle( 0, 0, self:GetModelRadius() / 2, 16 )
+
+        render.DepthRange( 0, 0 )
+
+            surface.SetDrawColor( 0, 255, 0, math_abs( math_sin( SysTime() * 2 ) * 200 ) )
+            draw.NoTexture()
+            draw_Circle( 0, 0, self:GetModelRadius() , 16 )
+
+        render.DepthRange( 0, 1 )
     cam.End3D2D()
 
-    self:SetAngles( 0, SysTime(), 0 )
+    self:SetAngles( Angle( 0, 5 * SysTime() , 0 ) )
 
     self:DrawModel()
 
 end
 
 function ENT:Think()
+    if self.PickedUp then return end
 
     local nearby = HLMD_FindInSphere( self:GetPos(), self.PickupRange, function( ent ) if ent.IsHLMDNPC then return true end end )
 
     if #nearby > 0 then
         for k, v in ipairs( nearby ) do
-            self:OnPickUp( v )
-            self:Remove()
+            
+            local ispickedup = self:OnPickUp( v )
+            
+            if SERVER and ispickedup then
+                self.PickedUp = true
+                self:Remove()
+            end
+            
             break
         end
     end

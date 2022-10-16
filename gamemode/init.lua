@@ -4,14 +4,22 @@ AddCSLuaFile( "sounds.lua" )
 AddCSLuaFile( "cl_netmessages.lua" )
 AddCSLuaFile( "enums.lua" )
 
+print("HALF LIFE: Mystery Dungeon Initialized\n")
+
 include( "shared.lua" )
 include( "networkstrings.lua" )
 include( "hooks.lua" )
 include( "sounds.lua" )
+include( "enums.lua" )
+
+
 
 local whitevec = Vector( 1, 1, 1 )
 local zeroangle = Angle()
 local zerovec = Vector()
+local ipairs = ipairs
+local ents_GetAll = ents.GetAll
+local defaultcolor =  Color( 14, 165, 235)
 
 -- Easily Create a NPC 
 function HLMD_CreateNPC( Classname, pos, angles, ply, colvec, HLMDteam )
@@ -31,4 +39,66 @@ function HLMD_CreateNPC( Classname, pos, angles, ply, colvec, HLMDteam )
     end )
 
     HLMD_DebugText( "New HLMD NPC has spawned! ", Nextbot )
+    return Nextbot
+end
+
+function HLMD_LogEvent( text, color, type)
+
+    net.Start( "hlmd_logevent" )
+    net.WriteString( text )
+    net.WriteColor( color or defaultcolor, false )
+    net.WriteString( type or "generic" )
+    net.Broadcast()
+
+end
+
+function HLMD_AddHLMDNPCTobar( ent )
+
+    net.Start( "hlmd_addteammember" )
+    net.WriteEntity( ent )
+    net.Broadcast()
+
+end
+
+function HLMD_ClearTeamBar()
+
+    net.Start( "hlmd_clearteambars" )
+    net.Broadcast()
+
+end
+
+function HLMD_RemoveHLMDNPCFrombar( ent )
+
+    net.Start( "hlmd_removeteammember" )
+    net.WriteEntity( ent )
+    net.Broadcast()
+
+end
+
+function HLMD_CleanDeadHLMDNPCS()
+    local count = 0
+    
+    for k, v in ipairs( ents_GetAll() ) do
+        if IsValid( v ) and v.IsHLMDNPC and !v:GetAlive() then HLMD_RemoveHLMDNPCFrombar( v ) v:Remove() count = count + 1 end
+    end
+
+    HLMD_DebugText( "Removing dead HLMD NPCs.. (" .. count .. ") Entities were removed" )
+end
+
+function HLMD_CleanClientRagdolls()
+
+    net.Start( "hlmd_ragdollclean" )
+    net.Broadcast()
+
+end
+
+
+function HLMD_OnHLMDNPCKilled( npc, attacker, inflictor )
+
+    if npc:GetHLMDTeam() == HLMD_PLAYERTEAM then
+        
+        HLMD_LogEvent( npc:GetNickname() .. " was killed!", Color( 255, 0, 0 ) )
+
+    end
+
 end
