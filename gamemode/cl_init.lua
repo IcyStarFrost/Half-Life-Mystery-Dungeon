@@ -348,6 +348,7 @@ net.Receive( "hlmd_clearteambars", function()
 end )
 
 -- Text bars --
+-- Main dialog option. 
 
 local textx = ScrW() / 3
 local texty = ScrH() / 1.2
@@ -489,6 +490,7 @@ end )
 
 
 -- Text Bubbles -- 
+-- Typically would be used for expressing pain or short sentences 
 
 local activetext = {}
 
@@ -554,7 +556,7 @@ net.Receive( "hlmd_addtextbubble", function()
 end )
 
 
--- Indicators --
+-- Damage/miss Indicators --
 
 local indicators = {}
 

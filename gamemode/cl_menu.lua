@@ -32,6 +32,8 @@ surface.CreateFont( "hlmd_intro", {
 
 local optionsmain
 
+
+-- Some functions for making panels to be easier and support my settings stuff
 local function CreateSettingsComboBox( pnl, settingname, optiontbl, selectcallback )
 
     local combo = vgui.Create( "DComboBox", pnl )
@@ -55,6 +57,8 @@ end
 local musicchannel
 
 
+
+-- The gamemode's own settings
 function HLMD_OpenOptionsPanel( parent )
     if IsValid( optionsmain ) then return end
 
@@ -106,7 +110,7 @@ function HLMD_OpenMainMenuPanel( ent, showintro  )
 
 
 
-    if showintro then
+    if showintro then -- This is where the intro of the gamemode is done
         local alpha = 255
         local startlogo = CurTime() + 2
         local startonce = true

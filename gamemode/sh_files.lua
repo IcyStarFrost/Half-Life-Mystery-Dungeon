@@ -57,6 +57,8 @@ end
 
 --
 
+
+-- Originally I was gonna use ConVars but I was afraid of the rare instance of a game crash and everything gets reset
 function HLMDUpdateSetting( name, value, override )
 
     if !file.Exists( "hlmd/settings.dat", "DATA" ) then HLMDFileWrite( "hlmd/settings.dat", "[]" ) end
