@@ -21,6 +21,8 @@ function ENT:Initialize()
     self:SetNickname( "Rebel" )
     self:SetShouldServerRagdoll( true )
 
+    self:AddFlags( FL_NPC )
+
     if SERVER then
         self.loco:SetStepHeight( 30 )
         self.loco:SetAcceleration( 1200 )

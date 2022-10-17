@@ -3,6 +3,8 @@ AddCSLuaFile()
 local random = math.random
 local Round = math.Round
 local PlayEffect = util.Effect
+local red = Color( 255, 0, 0 )
+local grayish = Color( 71, 89, 109)
 --HLMD_WEAPONTYPE_RANGED
 --HLMD_WEAPONTYPE_MELEE
 
@@ -64,9 +66,9 @@ function ENT:HandleClipTakeaway()
     self.Clip = self.Clip - 1
 
     if self.Clip == ( Round( self.MaxClip * 0.3, 0 ) ) then
-        HLMD_LogEvent( self:GetOwner():GetNickname() .. " is running low on clips! " .. self.Clip .. " left", Color( 255, 0, 0 ) )
+        HLMD_LogEvent( self:GetOwner():GetNickname() .. " is running low on clips! " .. self.Clip .. " left", red )
     elseif self.Clip == 0 then
-        HLMD_LogEvent( self:GetOwner():GetNickname() .. " ran out of clips! ", Color( 255, 0, 0 ) )
+        HLMD_LogEvent( self:GetOwner():GetNickname() .. " ran out of clips! ", red )
     end
 
     HLMD_DebugText( self:GetOwner(), "'s clip dropped to ", self.Clip)
@@ -85,7 +87,7 @@ function ENT:AttemptDamage( pos )
 
         HLMD_DebugText( enemy, " Evade = ", enemyevade )
 
-        if random( 1, 100 ) < enemyevade then HLMD_DebugText( enemy, " Dodged ", owner, "'s Attack!" ) return "dodged" end
+        if random( 1, 100 ) < enemyevade then HLMD_AddHudIndicator( enemy, "Dodged!", grayish ) HLMD_DebugText( enemy, " Dodged ", owner, "'s Attack!" ) return "dodged" end
 
         HLMD_DebugText( owner, " Attack Power = ", ownerattackpower )
         HLMD_DebugText( owner, " Weapon Power = ", self.WeaponPower )
@@ -113,15 +115,21 @@ function ENT:AttemptDamage( pos )
         if random( 0, 100 ) < self.CritChance then
             dmg = dmg * 2
             info:SetDamage( dmg )
+            HLMD_AddHudIndicator( enemy, tostring( dmg ) .. " Critical!", red )
             HLMD_DebugText( owner, " Had a critical hit on ", enemy, "!" )
+        else
+            HLMD_AddHudIndicator( enemy, tostring( dmg ), red )
         end
         
         HLMD_DebugText( enemy, " Took ", dmg, " damage from ", owner, "!" )
+
+        
         
         enemy:TakeDamageInfo( info )
 
         return dmg
     else
+        HLMD_AddHudIndicator( enemy, "Missed!", grayish )
         HLMD_DebugText( owner, " Missed their shot on ", enemy, "!" )
         return "missed"
     end

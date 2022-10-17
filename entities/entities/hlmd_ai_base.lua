@@ -253,12 +253,16 @@ function ENT:Revive()
 	self:SetHealth( self:GetMaxHealth() )
 	self:SetCollisionGroup( COLLISION_GROUP_NONE )
 	self:DrawShadow( true )
+	self:SetNoDraw( false )
+	self:SetAlive( true )
 
 	if IsValid( self:GetWeaponEntity() ) then self:GetWeaponEntity():SetNoDraw( false ) self:GetWeaponEntity():DrawShadow( true ) end
 
 	net.Start( "hlmd_removedeathragdoll" )
 	net.WriteEntity( self )
 	net.Broadcast()
+
+	self:OnRevive()
 
 end
 

@@ -5,8 +5,10 @@ print("HLMD: Hooks Initialized")
 
 hook.Add( "PlayerInitialSpawn", "hlmd_setupplayernextbot", function( ply )
 
+    timer.Simple( 0, function()
     ply:SetNoDraw( true )
     ply:SetMoveType( MOVETYPE_NOCLIP )
+    ply:SetCollisionGroup( COLLISION_GROUP_DEBRIS )
 
     ply.Nextbot = ents.Create( "hlmd_rebel" )
     ply.Nextbot:SetPos( ply:GetPos() )
@@ -24,6 +26,10 @@ hook.Add( "PlayerInitialSpawn", "hlmd_setupplayernextbot", function( ply )
     net.Start( "hlmd_addteammember" )
     net.WriteEntity( ply.Nextbot )
     net.Send( ply )
+
+        timer.Simple( 0, function() HLMD_DisplayMainMenu( true ) end )
+
+    end )
 
 end )
 

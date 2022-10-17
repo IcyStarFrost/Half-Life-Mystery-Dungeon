@@ -3,6 +3,7 @@ AddCSLuaFile( "shared.lua" )
 AddCSLuaFile( "sounds.lua" )
 AddCSLuaFile( "cl_netmessages.lua" )
 AddCSLuaFile( "enums.lua" )
+AddCSLuaFile( "sh_files.lua" )
 
 print("HALF LIFE: Mystery Dungeon Initialized\n")
 
@@ -11,6 +12,8 @@ include( "networkstrings.lua" )
 include( "hooks.lua" )
 include( "sounds.lua" )
 include( "enums.lua" )
+include( "sv_netmessages.lua" )
+include( "sh_files.lua" )
 
 
 
@@ -60,6 +63,14 @@ function HLMD_AddHLMDNPCTobar( ent )
 
 end
 
+function HLMD_AddHudIndicator( ent, text, color )
+    net.Start( "hlmd_addhudindicator" )
+    net.WriteEntity( ent )
+    net.WriteString( text )
+    net.WriteColor( color )
+    net.Broadcast()
+end
+
 function HLMD_ClearTeamBar()
 
     net.Start( "hlmd_clearteambars" )
@@ -83,6 +94,14 @@ function HLMD_CleanDeadHLMDNPCS()
     end
 
     HLMD_DebugText( "Removing dead HLMD NPCs.. (" .. count .. ") Entities were removed" )
+end
+
+function HLMD_DisplayMainMenu( intro )
+    net.Start( "hlmd_displaymainmenu" )
+    net.WriteEntity( Entity( 1 ).Nextbot )
+    net.WriteBool( intro )
+    net.Broadcast()
+    HLMD_AllowInput = false
 end
 
 function HLMD_CleanClientRagdolls()

@@ -1,5 +1,7 @@
 include( "shared.lua" )
+include( "sh_files.lua" )
 include( "cl_netmessages.lua" )
+include( "cl_menu.lua" )
 
 print("HLMD: Client-Side Initialized")
 
@@ -13,9 +15,9 @@ local string_ToTable = string.ToTable
 
 -- SKY VIEW --
 
-local overridepos
-local overrideangs
-local overridefov 
+HLMD_ClientViewoverridepos = nil
+HLMD_ClientViewoverrideangs = nil
+HLMD_ClientViewoverridefov = nil
 local target
 local farview = 500
 local farviewlerp = 500
@@ -30,7 +32,7 @@ function GM:CalcView( ply, origin, angles, fov, znear, zfar )
         
         viewtbl.origin = lastpos
         viewtbl.angles = lastangle
-        viewtbl.fov = overridefov or 60
+        viewtbl.fov = HLMD_ClientViewoverridefov or 60
         viewtbl.znear = znear
         viewtbl.zfar = zfar
     
@@ -40,16 +42,18 @@ function GM:CalcView( ply, origin, angles, fov, znear, zfar )
     farviewlerp = Lerp( 2 * FrameTime(), farviewlerp, farview )
     local skyviewpos = target:GetPos() + Vector( farviewlerp, 0, farviewlerp )
 
+    local pos = HLMD_ClientViewoverridepos or skyviewpos or lastpos
+
     tracetbl.start = target:WorldSpaceCenter()
-    tracetbl.endpos = skyviewpos
+    tracetbl.endpos = pos
     tracetbl.filter = target
 
     local result = trace( tracetbl )
 
-    viewtbl.origin = overridepos or skyviewpos or lastpos
-    viewtbl.angles = overrideangs or ( target:GetPos() - skyviewpos ):Angle() or lastangle
-    viewtbl.fov = overridefov or 60
-    viewtbl.znear = result.Hit and result.HitPos:Distance( skyviewpos ) or 100
+    viewtbl.origin = pos
+    viewtbl.angles = HLMD_ClientViewoverrideangs or ( target:GetPos() - skyviewpos ):Angle() or lastangle
+    viewtbl.fov = HLMD_ClientViewoverridefov or 60
+    viewtbl.znear = result.Hit and result.HitPos:Distance( pos ) or 100
     viewtbl.zfar = zfar
 
     lastpos = viewtbl.origin
@@ -232,10 +236,17 @@ local black = Color( 0, 0, 0 )
 local characterbackground = Color( 9, 70, 56, 150)
 
 hook.Add( "HUDPaint", "hlmd_teamstats", function()
+    
 
     if #teammembers > 0 then
         
         for k, tbl in ipairs( teammembers ) do
+
+            if IsValid( tbl.modelpanel ) then
+                tbl.modelpanel:SetVisible( !HLMD_MAINMENUOPEN )
+            end
+
+            if HLMD_MAINMENUOPEN then continue end
 
             local masterx = x
             local mastery = y + ( 90 * k )
@@ -268,7 +279,7 @@ hook.Add( "HUDPaint", "hlmd_teamstats", function()
                 local estimatedheadpos =  member:OBBCenter() * 1.9
 
                 tbl.modelpanel:SetLookAt( estimatedheadpos )
-                tbl.modelpanel:SetCamPos( estimatedheadpos + Vector( 30, -20, 0 ) )
+                tbl.modelpanel:SetCamPos( estimatedheadpos + Vector( 30, -20, 0 ) ) 
 
                 function tbl.modelpanel:LayoutEntity( ent )
                     if !IsValid( member ) then self:Remove() teammembers[ k ] = nil end
@@ -542,6 +553,64 @@ net.Receive( "hlmd_addtextbubble", function()
     table_insert( activetext, { ent, text, SysTime() + 2 } )
 end )
 
+
+-- Indicators --
+
+local indicators = {}
+
+
+hook.Add( "HUDPaint", "hlmd_hudindicator", function()
+
+    if #indicators > 0 then
+        
+        for k, tbl in ipairs( indicators ) do
+
+            local ent = tbl[ 1 ]
+            local text = tbl[ 2 ]
+            local time = tbl[ 3 ]
+            local color = tbl[ 4 ]
+
+            tbl[ 5 ] = tbl[ 5 ] or 255 -- Index 5 is the alpha
+            tbl[ 6 ] = tbl[ 6 ] or SysTime() + 0.2
+            local targetpos = ( ent:GetPos() + ent:OBBCenter() * 2.8 ):ToScreen()
+            local x = targetpos.x
+            local y = targetpos.y
+
+            if SysTime() > time then
+
+                tbl[ 5 ] = tbl[ 5 ] - 5
+
+                if tbl[ 5 ] <= 0 then
+                    table_remove( indicators, k )
+                end
+
+            end
+
+            if SysTime() < tbl[ 6 ] then
+                x = x + math.random( -3, 3 )
+                y = y + math.random( -3, 3 )
+            end
+            
+            color.a = tbl[ 5 ]
+
+            draw.SimpleTextOutlined( text, "hlmd_textbartext", x, y, color , TEXT_ALIGN_CENTER, nil, 1, black )
+            
+
+        end
+
+    end
+
+
+end )
+
+net.Receive( "hlmd_addhudindicator", function()
+    local ent = net.ReadEntity()
+    local text = net.ReadString()
+    local col = net.ReadColor()
+
+    table_insert( indicators, { ent, text, SysTime() + 2, col} )
+
+end )
 
 -- Misc --
 
