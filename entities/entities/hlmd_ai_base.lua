@@ -362,7 +362,7 @@ function ENT:Think()
                 local loudness = ( self:GetPlayerControlled() and 0 or 70)
                 self:EmitSound( HLMD_FootstepsTranslations[ result.MatType ], loudness )
 
-                local nextSnd = math_clamp(0.25 * (self.loco:GetDesiredSpeed() / speed), 0.25, 0.35)
+                local nextSnd = math_clamp(0.25 * (400 / speed), 0.25, 0.35)
                 self.NextFootstepSnd = CurTime() + nextSnd
             end
         end
