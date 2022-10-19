@@ -4,21 +4,21 @@ ENT.Base = "hlmd_ai_base"
 
 local trace = util.TraceLine
 
-ENT.BaseAttack =  15
-ENT.BaseDefense = 10
+ENT.BaseAttack =  5
+ENT.BaseDefense = 20
 ENT.BaseSpeed = 10
 ENT.BaseEvade = 10
-ENT.BaseHealth = 40
-ENT.HLMDType = "Human"
+ENT.BaseHealth = 45
+ENT.HLMDType = "Combine"
 ENT.Weapons = { "hlmd_weapon_smg1", "hlmd_weapon_pistol" }
 
 function ENT:Initialize()
 
     self:SetUpHLMDStats( 5 )
 
-    self:SetModel( "models/player/group02/male_04.mdl" )
+    self:SetModel( "models/player/police.mdl" )
 
-    self:SetNickname( "Rebel" )
+    self:SetNickname( "Metro Cop" )
     self:SetShouldServerRagdoll( true )
 
     self:AddFlags( FL_NPC )

@@ -3,6 +3,7 @@
 
 print("HLMD: Hooks Initialized")
 
+-- Spawns the player's nextbot and starts the main menu with the intro
 hook.Add( "PlayerInitialSpawn", "hlmd_setupplayernextbot", function( ply )
 
     timer.Simple( 0, function()
@@ -29,10 +30,15 @@ hook.Add( "PlayerInitialSpawn", "hlmd_setupplayernextbot", function( ply )
 
         timer.Simple( 0, function() HLMD_DisplayMainMenu( true ) end )
 
+    
+
     end )
 
 end )
 
+
+-- An attempt at making sure things are in the PVS of the Player's Nextbot.
+-- I'm not sure if makes a difference but it's here
 hook.Add("SetupPlayerVisibility", "hlmd_vis", function( ply, view )
     if !IsValid( Entity( 1 ).Nextbot ) then return end
 
@@ -41,9 +47,51 @@ hook.Add("SetupPlayerVisibility", "hlmd_vis", function( ply, view )
 end )
 
 
--- Player nextbot control
+-- Player nextbot and free cam control 
 hook.Add( "StartCommand", "hlmd_command", function( ply, cmd )
-    if IsValid( ply.Nextbot ) and HLMD_AllowInput and ply.Nextbot:GetAlive() and !HLMD_ENEMYTURN and !HLMD_AttackActive then
+
+    if HLMD_FREECAM then
+        local cam = Entity( 1 ).Freecam
+
+        if cmd:KeyDown( IN_FORWARD ) then
+            cam:SetPos( cam:GetPos() + Entity( 1 ):GetAimVector() * 10 )
+        end
+
+        if cmd:KeyDown( IN_BACK ) then
+            cam:SetPos( cam:GetPos() - Entity( 1 ):GetAimVector() * 10 )
+        end
+
+        if cmd:KeyDown( IN_MOVERIGHT ) then
+            cam:SetPos( cam:GetPos() + Entity( 1 ):EyeAngles():Right() * 10 )
+        end
+
+        if cmd:KeyDown( IN_MOVELEFT ) then
+            cam:SetPos( cam:GetPos() - Entity( 1 ):EyeAngles():Right() * 10 )
+        end
+
+        if cmd:KeyDown( IN_JUMP ) then
+            cam:SetPos( cam:GetPos() + cam:GetUp() * 10 )
+        end
+
+        if cmd:KeyDown( IN_DUCK ) then
+            cam:SetPos( cam:GetPos() - cam:GetUp() * 10 )
+        end
+
+        if cmd:GetMouseWheel() != 0 then
+            print( cmd:GetMouseWheel() )
+            net.Start( "hlmd_freecamfovchange" )
+            net.WriteInt( cmd:GetMouseWheel(), 4 )
+            net.Broadcast()
+        end
+
+        if cmd:KeyDown( IN_ATTACK ) then
+            cam:Remove()
+            HLMD_FREECAM = false
+        end
+
+    end
+
+    if IsValid( ply.Nextbot ) and HLMD_AllowInput and ply.Nextbot:GetAlive() and !HLMD_ENEMYTURN and !HLMD_AttackActive and !HLMD_FREECAM then
 
         local vec = ply.Nextbot:GetPos()
         local ismoving = false
@@ -68,7 +116,14 @@ hook.Add( "StartCommand", "hlmd_command", function( ply, cmd )
             ismoving = true
         end
 
-        if cmd:KeyDown(IN_USE) and ( !ply.Nextbot.WeaponswitchCooldown or CurTime() > ply.Nextbot.WeaponswitchCooldown )  then
+        if cmd:KeyDown( IN_USE ) and ( !ply.Nextbot.UseCooldown or CurTime() > ply.Nextbot.UseCooldown ) then
+            ply.Nextbot:SimulateUse()
+            ply.Nextbot:AddGesture( ACT_HL2MP_GESTURE_RANGE_ATTACK_FIST )
+            ply.Nextbot.UseCooldown = CurTime() + 0.8
+            --ply.Nextbot:AddGestureSequence( ply.Nextbot:LookupSequence( "range_melee_shove_1hand" ), true )
+        end
+
+        if cmd:KeyDown( IN_DUCK ) and ( !ply.Nextbot.WeaponswitchCooldown or CurTime() > ply.Nextbot.WeaponswitchCooldown )  then
             ply.Nextbot:ScrollWeapon()
             ply.Nextbot.WeaponswitchCooldown = CurTime() + 1
         end
@@ -78,7 +133,7 @@ hook.Add( "StartCommand", "hlmd_command", function( ply, cmd )
             ply.Nextbot.ChangeEnemyCooldown = CurTime() + 0.5
         end
 
-        if cmd:KeyDown( IN_ATTACK ) and !ply.Nextbot.IsAttacking then ply.Nextbot:AttackEnemy() end
+        if cmd:KeyDown( IN_ATTACK ) and !ply.Nextbot.IsAttacking then if !IsValid( ply.Nextbot:GetEnemy() ) then ply.Nextbot:ChangeEnemy() end ply.Nextbot:AttackEnemy() end
 
 
 
@@ -96,6 +151,7 @@ hook.Add( "StartCommand", "hlmd_command", function( ply, cmd )
 
 end )
 
+-- Prevent the Player from dying
 hook.Add( "EntityTakeDamage", "hlmd_nodamage", function( ent )
     if IsValid( ent ) and ent:IsPlayer() then return true end
 end )
@@ -105,6 +161,7 @@ hook.Add( "CanPlayerSuicide", "hlmd_nokillbind", function( ply )
 end )
 
 
+-- This hook is just used for testing 
 hook.Add( "PostCleanupMap", "hlmd_reset", function()
 
     timer.Simple( 0.1, function()
@@ -122,6 +179,7 @@ hook.Add( "PostCleanupMap", "hlmd_reset", function()
         Entity( 1 ).Nextbot:SetPlayerControlled( true )
         Entity( 1 ).Nextbot:SetDisplayColor( Vector( 1, 1, 1 ) )
         Entity( 1 ):SetNWEntity( "hlmd_nextbot", Entity( 1 ).Nextbot )
+
 
         net.Start( "hlmd_setviewtarget" )
         net.WriteEntity( Entity( 1 ).Nextbot )

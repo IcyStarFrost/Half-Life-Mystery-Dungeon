@@ -1,4 +1,4 @@
-include( "shared.lua" )
+include( "sh_shared.lua" )
 include( "sh_files.lua" )
 include( "cl_netmessages.lua" )
 include( "cl_menu.lua" )
@@ -27,7 +27,27 @@ local tracetbl = {}
 local lastpos 
 local lastangle
 
+local freecamfov = 70
+local freecam
+
 function GM:CalcView( ply, origin, angles, fov, znear, zfar )
+
+    if IsValid( freecam ) then
+        
+        viewtbl.origin = freecam:GetPos()
+        viewtbl.angles = angles
+        viewtbl.fov = freecamfov
+        viewtbl.znear = znear
+        viewtbl.zfar = zfar
+    
+        return viewtbl
+    else
+        freecamfov = 70
+    end
+
+    local result
+    local result2
+
     if !IsValid( target ) then 
         
         viewtbl.origin = lastpos
@@ -37,10 +57,27 @@ function GM:CalcView( ply, origin, angles, fov, znear, zfar )
         viewtbl.zfar = zfar
     
         return viewtbl
-
     end
+
+    local AdaptView = HLMDGetSettingValue( "AdaptViewZ" )
+
+    if AdaptView then
+        tracetbl.start = target:WorldSpaceCenter()
+        tracetbl.endpos = target:WorldSpaceCenter() + Vector( 0, 0, farviewlerp )
+        tracetbl.filter = target
+
+        result = trace( tracetbl )
+
+        tracetbl.start = target:WorldSpaceCenter()
+        tracetbl.endpos = target:WorldSpaceCenter() + Vector( farviewlerp, 0, 0 )
+        tracetbl.filter = target
+
+        result2 = trace( tracetbl )
+    end
+
     farviewlerp = Lerp( 2 * FrameTime(), farviewlerp, farview )
-    local skyviewpos = target:GetPos() + Vector( farviewlerp, 0, farviewlerp )
+
+    local skyviewpos = target:WorldSpaceCenter() + Vector( AdaptView and ( result2.HitPos:Distance( target:WorldSpaceCenter() ) - 1 ) or farviewlerp, 0, AdaptView and result.HitPos:Distance( target:WorldSpaceCenter() ) or farviewlerp )
 
     local pos = HLMD_ClientViewoverridepos or skyviewpos or lastpos
 
@@ -48,13 +85,16 @@ function GM:CalcView( ply, origin, angles, fov, znear, zfar )
     tracetbl.endpos = pos
     tracetbl.filter = target
 
-    local result = trace( tracetbl )
+    result = trace( tracetbl )
+
+    local dist = result.HitPos:Distance( pos )
 
     viewtbl.origin = pos
     viewtbl.angles = HLMD_ClientViewoverrideangs or ( target:GetPos() - skyviewpos ):Angle() or lastangle
     viewtbl.fov = HLMD_ClientViewoverridefov or 60
-    viewtbl.znear = result.Hit and result.HitPos:Distance( pos ) or 100
+    viewtbl.znear =  result.Hit and Clamp( dist, 50, dist ) or 50
     viewtbl.zfar = zfar
+
 
     lastpos = viewtbl.origin
     lastangle = viewtbl.angles
@@ -64,8 +104,8 @@ end
 
 net.Receive( "hlmd_setviewdistance", function() farview = net.ReadUInt( 16 ) end )
 net.Receive( "hlmd_setviewtarget", function() target = net.ReadEntity() end )
-
-
+net.Receive( "hlmd_freecamfovchange", function() freecamfov = freecamfov + net.ReadInt( 4 ) end )
+net.Receive( "hlmd_sendfreecam", function() freecam = net.ReadEntity() end )
 
 
 -- EVENT LOG --
@@ -97,10 +137,12 @@ local y = ScrH() - 300
 local defaultcolor =  Color( 14, 165, 235)
 local generic = Material( "hlmd/eventlog/generic.png" )
 local combat = Material( "hlmd/target.png" )
+local buff = Material( "hlmd/eventlog/buff.png" )
 
 local typemats = {
     [ "generic" ] = generic,
-    [ "combat" ] = combat
+    [ "combat" ] = combat,
+    [ "buff" ] = buff
 }
 
 hook.Add( "HUDPaint", "hlmd_eventlog", function()
@@ -236,7 +278,6 @@ local black = Color( 0, 0, 0 )
 local characterbackground = Color( 9, 70, 56, 150)
 
 hook.Add( "HUDPaint", "hlmd_teamstats", function()
-    
 
     if #teammembers > 0 then
         
@@ -419,11 +460,11 @@ hook.Add( "HUDPaint", "hlmd_textbarpaint", function()
             buildstring = buildstring .. text[ 1 ]
             table_remove( text, 1 )
 
-            if #buildstring == 65 then
+            if #buildstring == 70 then
                 buildstring = buildstring .. "\n"
             end
 
-            local addtime = text[ 1 ] == "." and 0.5 or 0.02
+            local addtime = ( text[ 1 ] == "." or text[ 1 ] == "?" or text[ 1 ] == "!" ) and 0.5 or 0.02
 
             if SysTime() > soundplaytime then
                 surface.PlaySound( "buttons/lightswitch2.wav" )
@@ -571,6 +612,8 @@ hook.Add( "HUDPaint", "hlmd_hudindicator", function()
             local text = tbl[ 2 ]
             local time = tbl[ 3 ]
             local color = tbl[ 4 ]
+
+            if !IsValid( ent ) then table_remove( indicators, k ) return end
 
             tbl[ 5 ] = tbl[ 5 ] or 255 -- Index 5 is the alpha
             tbl[ 6 ] = tbl[ 6 ] or SysTime() + 0.2

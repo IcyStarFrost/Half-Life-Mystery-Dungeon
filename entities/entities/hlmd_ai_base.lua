@@ -3,7 +3,7 @@ AddCSLuaFile()
 ENT.Base = "base_nextbot"
 
 
--- Optimize by localizing these so we don't have to go through a global table AND go through the table holding these functions
+-- Optimize by localizing these so we don't have to go through a global table AND/OR go through the table holding these functions
 local trace = util.TraceLine
 local table_insert = table.insert
 local table_Count = table.Count
@@ -16,6 +16,8 @@ local math_abs = math.abs
 local random = math.random
 local developermode = GetConVar( "developer" )
 local IsValid = IsValid
+local expcolor = Color( 0,126,148)
+local lvlupcol = Color( 0, 255, 157)
 
 local targetsprite = Material( "hlmd/target.png" )
 
@@ -74,9 +76,32 @@ function ENT:SetupDataTables()
     self:SetAlive( true )
     self:SetState( "wander" )
 
+	if SERVER then
+		self:NetworkVarNotify( "XP", function( ent, name, old, new ) self:OnGainXP( new ) end )
+	end
 end
 
-function ENT:SetUpHLMDStats( level )
+-- Technically we aren't "gaining" as in increasing the number but it is what it is
+function ENT:OnGainXP( CurrentXP )
+	local leftover = 0
+
+	if CurrentXP <= 0 then
+		leftover = math_abs( CurrentXP )
+		if self:InPlayerTeam() then
+			HLMD_LogEvent( self:GetNickname() .. " leveled up! Lvl " .. self:GetLevel() .. " to " .. " Lvl" .. self:GetLevel() + 1, lvlupcol, "buff" )
+		end
+		self:SetUpHLMDStats( self:GetLevel() + 1, leftover )
+
+		if self:InPlayerTeam() and ( !HLMD_NEXTLEVELUPSOUND or ( CurTime() > HLMD_NEXTLEVELUPSOUND ) ) then
+			BroadcastLua( "sound.PlayFile( 'sound/hlmd/misc/levelup.mp3', '', function( sndchan, id, name ) end )" )
+			HLMD_NEXTLEVELUPSOUND = CurTime() + 6
+		end
+	end
+	
+end
+
+-- Settings stats based on level. xpminus is used as any leftovers from any level ups
+function ENT:SetUpHLMDStats( level, xpminus )
 
   self:SetLevel( level )
 
@@ -89,7 +114,7 @@ function ENT:SetUpHLMDStats( level )
   self:SetSpeed( self.BaseSpeed )
   self:SetEvade( self.BaseEvade )
 
-  self:SetXP( 100 * ( 2 * level) )
+  self:SetXP( ( 100 * ( 2 * level) ) - ( xpminus or 0 ) )
 
   if SERVER then
     self:SetMaxHealth( self.BaseHealth + self.AddedLevelhealth + 2 * ( level ) )
@@ -97,6 +122,7 @@ function ENT:SetUpHLMDStats( level )
 
 end
 
+-- Pretty much just randomizing stats through this
 function ENT:RandomizeStats( level )
 
   self:SetLevel( level )
@@ -132,11 +158,17 @@ function ENT:RandomizeStats( level )
 end
 
 -- For override
+
 function ENT:AddonThink()
 end
 
 function ENT:AddonThread()
 end
+
+function ENT:OnRevive()
+end
+
+--
 
 
 -- Gmod example but it works so let's use it
@@ -161,8 +193,11 @@ function ENT:Draw()
     tracetbl.start = self:WorldSpaceCenter()
     tracetbl.endpos = self:WorldSpaceCenter() - Vector( 0, 0, 10000 )
     tracetbl.filter = self
+	tracetbl.mask = MASK_NPCSOLID
 
     local result = trace( tracetbl )
+
+	-- Inside this cam handles the little circle under the nextbot and the weapon range circle
     cam.Start3D2D( result.HitPos + Vector( 0, 0, 2), Angle( 0, 0, 0 ), 1 )
 
         render.DepthRange( 0, 0 )
@@ -200,7 +235,7 @@ function ENT:Draw()
 
     cam.End3D2D()
 
-    if self:GetPlayerControlled() and IsValid( self:GetEnemy() ) then
+    if self:GetPlayerControlled() and IsValid( self:GetEnemy() ) then -- Draws the target sprite above our target
       render.SetMaterial( targetsprite )
       local maxz = self:GetEnemy():OBBMaxs()
       maxz[ 1 ] = 0
@@ -245,8 +280,6 @@ function ENT:OnAttacked( attacker )
 
 end
 
-function ENT:OnRevive()
-end
 
 function ENT:Revive()
 
@@ -266,24 +299,11 @@ function ENT:Revive()
 
 end
 
-ENT.ThinkFunctions = {}
-
-function ENT:NewThink( func )
-	table_insert( self.ThinkFunctions, func )
-end
 
 function ENT:Think()
 
 
-	for k, v in ipairs( self.ThinkFunctions ) do
-		
-		local returnvalue = v()
-
-		if returnvalue == "end" then self.ThinkFunctions[ k ] = nil end
-
-	end
-
-    -- It is important that we have this up here
+    -- It is important that we have this up here so the health is still networked even when dead
     if SERVER then
       if !self.NextHealthNetwork or CurTime() > self.NextHealthNetwork then
         self:SetNWInt( "hlmd_health", math_clamp( self:Health(), 0, self:GetMaxHealth() ) )
@@ -302,6 +322,7 @@ function ENT:Think()
 			HLMD_ResetPreventActions()
 		end
 
+		-- The AI should pull out a weapon
 		if !self:GetPlayerControlled() and !IsValid( self:GetWeaponEntity() ) then self:ScrollWeapon() end
 
 		local dist = self:InPlayerTeam() and 150 or 1000
@@ -320,6 +341,7 @@ function ENT:Think()
 
 		local speed = self.loco:GetVelocity():Length()
 
+		-- Passive healing
 		if self.CanPassiveHeal and self:Health() < self:GetMaxHealth() and speed > 0 and ( !self.NextPassiveHeal or CurTime() > self.NextPassiveHeal ) and self:GetHLMDTeam() == HLMD_PLAYERTEAM then
 			
 			self:SetHealth( self:Health() + 1 )
@@ -327,7 +349,7 @@ function ENT:Think()
 			self.NextPassiveHeal = CurTime() + 0.5
 		end
 
-        
+        -- Footstep sounds
         if CurTime() > self.NextFootstepSnd and speed > 0 and self.loco:IsOnGround() then
 
             self.FootStepTrace.start = self:WorldSpaceCenter()
@@ -340,11 +362,13 @@ function ENT:Think()
                 local loudness = ( self:GetPlayerControlled() and 0 or 70)
                 self:EmitSound( HLMD_FootstepsTranslations[ result.MatType ], loudness )
 
-                local nextSnd = math_clamp(0.25 * (400 / speed), 0.25, 0.35)
+                local nextSnd = math_clamp(0.25 * (self.loco:GetDesiredSpeed() / speed), 0.25, 0.35)
                 self.NextFootstepSnd = CurTime() + nextSnd
             end
         end
 
+
+		-- Animations are handled here
         local idle = IsValid( self:GetWeaponEntity() ) and self:GetWeaponEntity().Animations.idle or ACT_HL2MP_IDLE
         local run = IsValid( self:GetWeaponEntity() ) and self:GetWeaponEntity().Animations.run or ACT_HL2MP_RUN
         local jump = IsValid( self:GetWeaponEntity() ) and self:GetWeaponEntity().Animations.jump or ACT_HL2MP_JUMP_FIST
@@ -356,8 +380,10 @@ function ENT:Think()
         elseif !self.loco:IsOnGround() and self:GetActivity() != jump then
             self:StartActivity( jump )
         end
+		--
 
 
+		-- Facing a target or Vector
         if IsValid( self.FaceTarget ) then
           self.loco:FaceTowards( ( isentity( self.FaceTarget ) and self.FaceTarget:GetPos() or self.FaceTarget ) )
         end
@@ -366,6 +392,8 @@ function ENT:Think()
 
 end
 
+
+-- Gets the closest entity in a sequential table of entities
 function ENT:GetClosestEntity( tbl )
 
 	local entities = HLMD_FindInSphere( self:GetPos(), 1000, function( ent ) if ent.IsHLMDNPC and ent:GetAlive() and ent != self and ent:GetHLMDTeam() != self:GetHLMDTeam() then return true end end )
@@ -385,6 +413,7 @@ function ENT:GetClosestEntity( tbl )
 	return closest
 end
 
+-- Say something in a text dialog box
 function ENT:SayInTextBox( text )
 	net.Start( "hlmd_addtextbar" )
 		net.WriteString( self:GetNickname() )
@@ -394,6 +423,7 @@ function ENT:SayInTextBox( text )
 	net.Broadcast()
 end
 
+-- Say something in a small box. This was a iffy recreation of small expressions in PMD DX when a pokemon attacks or gets hurt
 function ENT:SayInBubble( text )
 	net.Start( "hlmd_addtextbubble" )
 		net.WriteEntity( self )
@@ -401,6 +431,18 @@ function ENT:SayInBubble( text )
 	net.Broadcast()
 end
 
+-- In a sphere, simulates a use on everything found
+function ENT:SimulateUse()
+
+	local front = HLMD_FindInSphere( self:WorldSpaceCenter() + self:GetForward() * 50, 50 )
+
+	for k, v in ipairs( front ) do
+		if IsValid( v ) then v:Use( self, self, USE_TOGGLE ) end
+	end
+end
+
+
+-- Find a random position and walk to it
 function ENT:Wander()
 
 	local navareas = {}
@@ -464,6 +506,10 @@ local statefunctions = {
 	[ "attackenemy" ] = ENT.AttackState
 }
 
+
+-- Where the AI is handled.
+-- These (if then return end) functions are mainly part of the Turn based combat stuff.
+-- This was the best way I could come up with
 function ENT:AIFunc()
 	if self:GetPlayerControlled() or !self:GetAlive() then return end
 	if HLMD_AttackActive then return end
@@ -491,8 +537,6 @@ end
 
 function ENT:RunBehaviour()
 
-
-
 	while true do
 
 		self:AIFunc()
@@ -516,6 +560,7 @@ function ENT:UpdateOnPath( path )
 	path:Update( self )
 end
 
+-- Main movement with pathfinding
 function ENT:ControlMovement( update, stopdist )
 	if stopdist then stopdist = stopdist + self:GetModelRadius()/2 end
 	if stopdist and self:GetRangeSquaredTo( self.GoalPosition ) < ( stopdist * stopdist ) then return end 
@@ -567,6 +612,7 @@ function ENT:ControlMovement( update, stopdist )
 
 end
 
+-- Attachments stuff
 function ENT:GetBonePosAngs(index)
     local pos,angle = self:GetBonePosition(index)
     if pos and pos == self:GetPos() then
@@ -620,7 +666,7 @@ function ENT:GetBonePosAngs(index)
   
   end
 
-
+-- Cycle through enemies
 function ENT:ChangeEnemy()
   if !IsValid( self:GetWeaponEntity() ) then return end
   local find = HLMD_FindInSphere( self:GetPos(), self:GetWeaponEntity().Range, function( ent ) if ent.IsHLMDNPC and ent:GetAlive() and self:HasLOS( ent ) and ent != self and ent:GetHLMDTeam() != self:GetHLMDTeam() then return true end end )
@@ -640,13 +686,29 @@ function ENT:ChangeEnemy()
 
 end
 
+-- Not sure what to say for this
 function ENT:OnAction()
 	self.PreventAction = true
 end
 
 function ENT:OnEnemyKilled()
+	local enemylevel = self:GetEnemy():GetLevel()
+	local addxp = ( ( 5 * enemylevel ) + random( 0, 10) ) * HLMD_EXPMULT
 	self:SetEnemy( NULL )
 	self.PastEnemies = {}
+
+	if self:InPlayerTeam() then
+		timer.Simple( 1, function()
+			for k, v in ipairs( HLMD_GetPlayerTeamMembers() ) do
+				HLMD_AddHudIndicator( v, "+" .. addxp .. " XP", expcolor )
+				HLMD_DebugText( v, " Gained " .. addxp .. " XP")
+				v:SetXP( v:GetXP() - addxp )
+			end
+		end )
+	else
+		HLMD_DebugText( self, " Gained " .. addxp .. " XP")
+		self:SetXP( self:GetXP() - addxp )
+	end
 end
 
 local lostbl = {}

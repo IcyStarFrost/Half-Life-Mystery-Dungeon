@@ -93,11 +93,11 @@ function ENT:AttemptDamage( pos )
         HLMD_DebugText( owner, " Weapon Power = ", self.WeaponPower )
         HLMD_DebugText( enemy, " Defense = ", enemydefense )
 
-        local dmg = self.WeaponPower + ( ownerattackpower / 2 )
+        local dmg = Round( self.WeaponPower + ( ownerattackpower / 2 ), 0 )
 
         HLMD_DebugText( owner, " Pre Defense Damage = ", dmg )
 
-        dmg = dmg - ( enemydefense / 2 )
+        dmg = Round( dmg - ( enemydefense / 2 ), 0 )
 
         HLMD_DebugText( owner, " Post Defense Damage = ", dmg )
 
@@ -113,12 +113,12 @@ function ENT:AttemptDamage( pos )
         info:SetDamagePosition( pos )
 
         if random( 0, 100 ) < self.CritChance then
-            dmg = dmg * 2
+            dmg = Round( dmg * 2 )
             info:SetDamage( dmg )
-            HLMD_AddHudIndicator( enemy, tostring( dmg ) .. " Critical!", red )
+            HLMD_AddHudIndicator( enemy, tostring( Round( dmg, 0 ) ) .. " Critical!", red )
             HLMD_DebugText( owner, " Had a critical hit on ", enemy, "!" )
         else
-            HLMD_AddHudIndicator( enemy, tostring( dmg ), red )
+            HLMD_AddHudIndicator( enemy, tostring( Round( dmg, 0 ) ), red )
         end
         
         HLMD_DebugText( enemy, " Took ", dmg, " damage from ", owner, "!" )

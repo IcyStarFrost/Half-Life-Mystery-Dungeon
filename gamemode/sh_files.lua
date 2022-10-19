@@ -1,3 +1,5 @@
+-- Create our own directory
+-- I find file work like this fun. No idea why I just like seeing data in a file that was made by my code
 
 file.CreateDir( "hlmd" )
 
@@ -7,6 +9,7 @@ local JSONToTable = util.JSONToTable
 local TableToJSON = util.TableToJSON
 
 -- We use our own version of Write and Read since they are open source and any addon can screw stuff up
+-- Better to play it safe
 
 function HLMDFileWrite( filename, contents )
 
@@ -35,6 +38,7 @@ function HLMDFileRead( filename, path )
 
 end
 
+-- Easier than using HLMDFileRead() with the filepath
 function HLMDReadSettings()
 
 	local f = file.Open( "hlmd/settings.dat", "r", "DATA" )
@@ -49,6 +53,7 @@ function HLMDReadSettings()
 
 end
 
+-- A Easy way to getting a setting's value
 function HLMDGetSettingValue( name )
     local settings = HLMDReadSettings()
     settings = JSONToTable( settings )
@@ -58,7 +63,8 @@ end
 --
 
 
--- Originally I was gonna use ConVars but I was afraid of the rare instance of a game crash and everything gets reset
+-- Originally I was gonna use ConVars but I was afraid of the rare instance of a game crash and everything gets reset.
+-- So this will stand as the mode's main database for customizable settings and internal data such as levels and ect
 function HLMDUpdateSetting( name, value, override )
 
     if !file.Exists( "hlmd/settings.dat", "DATA" ) then HLMDFileWrite( "hlmd/settings.dat", "[]" ) end
@@ -92,3 +98,9 @@ end
 
 -- Set up the settings. This will only create them if they don't exist already.
 HLMDUpdateSetting( "MenuTheme", "Brink.mp3" )
+HLMDUpdateSetting( "PlayerNickname", "" )
+HLMDUpdateSetting( "PartnerNickname", "" )
+HLMDUpdateSetting( "TeamName", "" )
+HLMDUpdateSetting( "AdaptViewZ", false )
+HLMDUpdateSetting( "PlayerColor", Vector( 1, 1, 1 ) )
+HLMDUpdateSetting( "FirstTime", true )

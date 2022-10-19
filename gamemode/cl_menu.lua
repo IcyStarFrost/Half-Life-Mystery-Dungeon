@@ -1,12 +1,16 @@
 
+
+-- Many locals
 local math_sin = math.sin
 local math_cos = math.cos
 local table_remove = table.remove
 local string_ToTable = string.ToTable
 local logo = Material( "hlmd/logo.png" )
 local FFTColor = Color( 0, 195, 255 )
+local black = Color( 0, 0, 0 )
 local JSONToTable = util.JSONToTable
 local TableToJSON = util.TableToJSON
+local IsValid = IsValid
 local ipairs = ipairs
 print( "HLMD: Main Menu Loaded" )
 
@@ -30,6 +34,8 @@ surface.CreateFont( "hlmd_intro", {
 
 })
 
+
+-- We localize this so the Main Menu can remove this if the player exits the main menu with the options open
 local optionsmain
 
 
@@ -54,6 +60,48 @@ local function CreateSettingsComboBox( pnl, settingname, optiontbl, selectcallba
 
     return combo
 end
+
+local function CreateSettingsTextEntry( pnl, settingname, placeholdertext, onchangecallback )
+
+    local text = vgui.Create( "DTextEntry", pnl )
+    text:Dock( TOP )
+    text:SetSize( 100, 30 )
+    text:SetPlaceholderText( placeholdertext )
+
+    local settings = HLMDReadSettings()
+    settings = JSONToTable( settings )
+
+    text:SetText( settings[ settingname ] or "" )
+
+    function text:OnChange( val )
+        if isfunction( onchangecallback ) then onchangecallback( val ) end
+        HLMDUpdateSetting( settingname, val, true )
+    end
+
+    return text
+end
+
+local function CreateSettingsCheckBox( pnl, settingname, onchangecallback )
+
+    local box = vgui.Create( "DCheckBox", pnl )
+    local x, y = pnl:GetSize()
+    box:DockMargin( 0, 0, 340, 0 )
+    box:Dock( TOP )
+
+
+    local settings = HLMDReadSettings()
+    settings = JSONToTable( settings )
+
+    box:SetChecked( settings[ settingname ] )
+
+    function box:OnChange( val )
+        if isfunction( onchangecallback ) then onchangecallback( val ) end
+        HLMDUpdateSetting( settingname, val, true )
+    end
+
+    return box
+end
+
 local musicchannel
 
 
@@ -61,6 +109,10 @@ local musicchannel
 -- The gamemode's own settings
 function HLMD_OpenOptionsPanel( parent )
     if IsValid( optionsmain ) then return end
+
+    sound.PlayFile( "sound/hlmd/mainmenu/ui_press.wav", "", function( sndchan, id, name )  end )
+
+    hook.Run( "HLMDOnOpenOptionsPanel" )
 
     optionsmain = vgui.Create( "DFrame", parent )
     optionsmain:SetSize( 400, 400 )
@@ -71,25 +123,59 @@ function HLMD_OpenOptionsPanel( parent )
     optionsmain:SetIcon( "hlmd/eventlog/generic.png" )
 
     local misctab = vgui.Create( "EditablePanel", optionsmain)
+    local personaltab = vgui.Create( "EditablePanel", optionsmain)
 
     local scroll = vgui.Create( "DScrollPanel", misctab )
     scroll:Dock( FILL )
+
+    local scroll2 = vgui.Create( "DScrollPanel", personaltab )
+    scroll2:Dock( FILL )
 
     local tabs = vgui.Create( "DPropertySheet", optionsmain )
     tabs:Dock( FILL )
 
     tabs:AddSheet( "Misc", misctab )
+    tabs:AddSheet( "Personal", personaltab )
 
     local sndfiles = file.Find( "sound/hlmd/mainmenu/music/*", "GAME", "namedesc")
 
     local lbl = vgui.Create( "DLabel", scroll )
     lbl:SetText( "Main Menu Theme" )
     lbl:Dock( TOP )
+
     local combo = CreateSettingsComboBox( scroll, "MenuTheme", sndfiles, function( val )
         if IsValid( musicchannel ) then musicchannel:Stop() end
         sound.PlayFile( "sound/hlmd/mainmenu/music/" .. val, "", function( sndchan, id, name ) musicchannel = sndchan  end )
     end )
 
+    local lbl = vgui.Create( "DLabel", scroll )
+    lbl:SetText( "Adapt View Z" )
+    lbl:Dock( TOP )
+
+    local lbl = vgui.Create( "DLabel", scroll )
+    lbl:SetText( "Tries to fit the view under small ceilings" )
+    lbl:Dock( TOP )
+
+    CreateSettingsCheckBox( scroll, "AdaptViewZ" )
+
+
+    lbl = vgui.Create( "DLabel", scroll2 )
+    lbl:SetText( "Your Character's Nickname" )
+    lbl:Dock( TOP )
+
+    CreateSettingsTextEntry( scroll2, "PlayerNickname", "Your Nickname" )
+
+    lbl = vgui.Create( "DLabel", scroll2 )
+    lbl:SetText( "Your Partner's Nickname" )
+    lbl:Dock( TOP )
+
+    CreateSettingsTextEntry( scroll2, "PartnerNickname", "Partner Nickname" )
+
+    lbl = vgui.Create( "DLabel", scroll2 )
+    lbl:SetText( "Your Team Name" )
+    lbl:Dock( TOP )
+
+    CreateSettingsTextEntry( scroll2, "TeamName", "Team Name" )
 
     function optionsmain:Paint( w, h )
 
@@ -98,10 +184,15 @@ function HLMD_OpenOptionsPanel( parent )
 
     end
 
+    function optionsmain:OnClose()
+        hook.Run( "HLMDOnCloseOptionsPanel" )
+    end
+
 
 end
 
 function HLMD_OpenMainMenuPanel( ent, showintro  )
+    if HLMD_MAINMENUOPEN then return end
 
     HLMD_MAINMENUOPEN = true
     gui.EnableScreenClicker( true )
@@ -173,7 +264,7 @@ function HLMD_OpenMainMenuPanel( ent, showintro  )
                     buildtime = SysTime() + addtime
                 end
 
-                draw.DrawText( buildstring, "hlmd_intro", ScrW() / 2, ScrH() / 2, introcolor , TEXT_ALIGN_CENTER )
+                
     
                 if startonce then
                     startonce = false
@@ -182,6 +273,8 @@ function HLMD_OpenMainMenuPanel( ent, showintro  )
     
             end
 
+            draw.DrawText( buildstring, "hlmd_intro", ScrW() / 2, ScrH() / 2, introcolor , TEXT_ALIGN_CENTER )
+
 
         end)
 
@@ -189,8 +282,32 @@ function HLMD_OpenMainMenuPanel( ent, showintro  )
 
     end
 
-
+    -- The time is controlled whether the intro played or not
     timer.Simple( time, function()
+
+        if IsValid( musicchannel ) then musicchannel:Stop() end
+
+
+        -- No intro? Then play the music half way and fade in
+        if !showintro then 
+
+            sound.PlayFile( "sound/hlmd/mainmenu/fadein.mp3", "", function( sndchan, id, name ) sndchan:SetVolume( 0.1 ) end )
+            LocalPlayer():ScreenFade( SCREENFADE.IN, black, 1, 0.2 )
+
+            local volume = 0
+            local theme = HLMDGetSettingValue( "MenuTheme" )
+            sound.PlayFile( "sound/hlmd/mainmenu/music/" .. theme, "noblock", function( sndchan, id, name ) 
+                musicchannel = sndchan 
+                sndchan:SetTime( sndchan:GetLength() / 2 )
+                sndchan:SetVolume( volume )
+
+                hook.Add( "Think", "hlmd_mainmusicfadein", function()
+                    if !IsValid( sndchan ) or volume > 1 or !HLMD_MAINMENUOPEN then hook.Remove( "Think", "hlmd_mainmusicfadein" ) return end
+                    volume = volume + 0.001
+                    sndchan:SetVolume( volume )
+                end )
+            end )
+        end
 
 
         local imagepnl = vgui.Create( "DImage" )
@@ -208,6 +325,13 @@ function HLMD_OpenMainMenuPanel( ent, showintro  )
         Optionsbutton:SetSize( 150, 30 )
         Optionsbutton:SetText( "Options" )
 
+        local Freecambutton = vgui.Create( "DButton" )
+        Freecambutton:SetPos( ( ScrW() / 3 ) - 75, ScrH() - 100 )
+        Freecambutton:SetSize( 150, 30 )
+        Freecambutton:SetText( "Enter Free Cam" )
+
+        function Freecambutton:DoClick() net.Start( "hlmd_startfreecam" ) net.SendToServer() resumebutton:DoClick() end
+        
         function Optionsbutton:DoClick() HLMD_OpenOptionsPanel() end
 
         hook.Add( "RenderScreenspaceEffects", "hlmd_blur", function()
@@ -232,16 +356,17 @@ function HLMD_OpenMainMenuPanel( ent, showintro  )
 
                 musicchannel:FFT( Fft, FFT_8192 )
                 
-                for i=1, 150 do
+            end
+
+            for i=1, 150 do
                     
-                    local x = startx + ( 5 * i )
+                local x = startx + ( 5 * i )
 
-                    surface.SetDrawColor( FFTColor )
-                    surface.DrawRect( x, starty, 5, 5 + Fft[ i ] * 300 )
-
-                end
+                surface.SetDrawColor( FFTColor )
+                surface.DrawRect( x, starty, 5, 5 + ( Fft[ i ] or 0 ) * 300 )
 
             end
+
         
         end )
 
@@ -256,6 +381,11 @@ function HLMD_OpenMainMenuPanel( ent, showintro  )
         end )
 
         function resumebutton:Paint( w, h )
+            surface.SetDrawColor( 0, 0, 0, 200 )
+            surface.DrawRect( 0, 0, w, h )
+        end
+
+        function Freecambutton:Paint( w, h )
             surface.SetDrawColor( 0, 0, 0, 200 )
             surface.DrawRect( 0, 0, w, h )
         end
@@ -277,9 +407,17 @@ function HLMD_OpenMainMenuPanel( ent, showintro  )
             hook.Remove( "Think", "hlmd_menuthink" )
             hook.Remove( "HUDPaint", "hlmd_mainmenuhud" )
 
+            LocalPlayer():ScreenFade( SCREENFADE.IN, color_white, 1, 0.2 )
+
+            sound.PlayFile( "sound/hlmd/mainmenu/resume.mp3", "", function( sndchan, id, name )  end )
+            sound.PlayFile( "sound/hlmd/mainmenu/ui_press.wav", "", function( sndchan, id, name )  end )
+
             imagepnl:Remove()
             resumebutton:Remove()
+            Freecambutton:Remove()
             Optionsbutton:Remove()
+
+            if IsValid( optionsmain ) then optionsmain:Remove() end
 
             net.Start( "hlmd_mainmenuexit" )
             net.SendToServer()
